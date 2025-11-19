@@ -1,0 +1,28 @@
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Directorios de IDE/editores
+.vscode/
+.idea/
+*.swp
+
+# Entornos virtuales (si usas Python)
+venv/
+.env/
+
+# Compilados y binarios (C/C++ u otros)
+*.o
+*.out
+*.exe
+*.a
+*.so
+
+# Logs
+logs/
+*.log
+
+# Archivos temporales
+*.tmp
+*.bak
+*~
