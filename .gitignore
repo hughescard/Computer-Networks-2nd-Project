@@ -10,6 +10,7 @@ Thumbs.db
 # Entornos virtuales (si usas Python)
 venv/
 .env/
+.venv/
 
 # Compilados y binarios (C/C++ u otros)
 *.o
