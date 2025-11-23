@@ -53,6 +53,11 @@ La estructura básica de directorios es:
 - Ajusta host/puerto vía variables de entorno `PORTAL_HTTP_HOST` y `PORTAL_HTTP_PORT`.
 - Concurrencia: pool de hilos configurable con `PORTAL_HTTP_WORKERS` (por defecto 16).
 - Límite de tamaño de petición (cabeceras) con `PORTAL_HTTP_MAX_REQUEST` (por defecto 65536 bytes) para evitar abuso.
+
+## Autenticación y sesiones
+
+- Usuarios de ejemplo en `config/usuarios.txt` (formato `usuario:contraseña`).
+- Sesiones en memoria con persistencia a `config/sessions.json`; el módulo `src/sessions.py` restaura sesiones activas al iniciar (descarta las expiradas) y guarda en disco en cada alta/baja/limpieza.
 ## Scripts de firewall (gateway)
 
 - Ejecutar como root: `sudo bash scripts/firewall_init.sh` (aplica la política base, verifica `nf_conntrack`, habilita forwarding y guarda reglas con `iptables-save` en `/etc/iptables/rules.v4` si está disponible).
