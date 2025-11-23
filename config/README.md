@@ -9,6 +9,8 @@ En este directorio se guardan **archivos de configuración** del portal cautivo.
 - Archivos de configuración de red o del portal, por ejemplo:
   - IPs/puertos de escucha.
   - Parámetros de sesión (tiempos de expiración, etc.).
+- Estado persistente generado en runtime:
+  - `sessions.json` (se crea automáticamente con las sesiones activas).
 - Variables de entorno o plantillas de configuración:
   - Por ejemplo `config.example.env` o similar (sin credenciales reales).
 
