@@ -1,0 +1,7 @@
+# Archivo de usuarios del portal cautivo
+# Formato: usuario:contraseña
+# Líneas en blanco y las que empiezan con # se ignoran
+
+admin:admin
+invitado:invitado123
+prueba:prueba123
