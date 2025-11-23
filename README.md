@@ -45,3 +45,9 @@ La estructura básica de directorios es:
 ├── scripts/    # Scripts para firewall, arranque/parada del servicio, etc.
 ├── tests/      # Pruebas y casos de test
 └── logs/       # Logs de ejecución (normalmente ignorados por git)
+
+## Servidor HTTP básico (issue #5)
+
+- Ejecución: `PORTAL_HTTP_HOST=0.0.0.0 PORTAL_HTTP_PORT=8080 python3 src/http_server.py`
+- El servidor solo usa sockets de la biblioteca estándar y sirve `src/templates/index.html` para peticiones GET.
+- Ajusta host/puerto vía variables de entorno `PORTAL_HTTP_HOST` y `PORTAL_HTTP_PORT`.
