@@ -51,6 +51,8 @@ La estructura básica de directorios es:
 - Ejecución: `PORTAL_HTTP_HOST=0.0.0.0 PORTAL_HTTP_PORT=8080 python3 src/http_server.py`
 - El servidor solo usa sockets de la biblioteca estándar y sirve `src/templates/index.html` para peticiones GET.
 - Ajusta host/puerto vía variables de entorno `PORTAL_HTTP_HOST` y `PORTAL_HTTP_PORT`.
+- Concurrencia: pool de hilos configurable con `PORTAL_HTTP_WORKERS` (por defecto 16).
+- Límite de tamaño de petición (cabeceras) con `PORTAL_HTTP_MAX_REQUEST` (por defecto 65536 bytes) para evitar abuso.
 
 ## Autenticación y sesiones
 
