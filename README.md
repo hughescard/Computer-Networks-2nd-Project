@@ -46,6 +46,11 @@ La estructura básica de directorios es:
 ├── tests/      # Pruebas y casos de test
 └── logs/       # Logs de ejecución (normalmente ignorados por git)
 
+## Servidor HTTP básico (issue #5)
+
+- Ejecución: `PORTAL_HTTP_HOST=0.0.0.0 PORTAL_HTTP_PORT=8080 python3 src/http_server.py`
+- El servidor solo usa sockets de la biblioteca estándar y sirve `src/templates/index.html` para peticiones GET.
+- Ajusta host/puerto vía variables de entorno `PORTAL_HTTP_HOST` y `PORTAL_HTTP_PORT`.
 ## Scripts de firewall (gateway)
 
 - Ejecutar como root: `sudo bash scripts/firewall_init.sh` (aplica la política base, verifica `nf_conntrack`, habilita forwarding y guarda reglas con `iptables-save` en `/etc/iptables/rules.v4` si está disponible).
