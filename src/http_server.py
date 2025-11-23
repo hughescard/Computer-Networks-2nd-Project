@@ -11,6 +11,7 @@ Servidor HTTP básico para el portal cautivo.
 import logging
 import os
 import socket
+from concurrent.futures import ThreadPoolExecutor
 import threading
 from pathlib import Path
 from typing import Tuple
@@ -18,6 +19,10 @@ from typing import Tuple
 # Host y puerto del servidor HTTP (configurables por variables de entorno)
 HOST = os.getenv("PORTAL_HTTP_HOST", "0.0.0.0")
 PORT = int(os.getenv("PORTAL_HTTP_PORT", "8080"))
+# Número máximo de hilos para atender clientes (concurrencia)
+MAX_WORKERS = int(os.getenv("PORTAL_HTTP_WORKERS", "16"))
+# Límite de bytes a leer de la petición (cabeceras) para evitar consumo desmedido
+MAX_REQUEST_BYTES = int(os.getenv("PORTAL_HTTP_MAX_REQUEST", "65536"))
 
 # Directorios de plantillas 
 BASE_DIR = Path(__file__).resolve().parent
@@ -39,6 +44,15 @@ HTTP_405_TEMPLATE = (
     "Content-Length: {length}\r\n"
     "Connection: close\r\n"
     "Allow: GET\r\n"
+    "\r\n"
+)
+
+# Respuesta 400 para peticiones demasiado grandes/mal formadas
+HTTP_400_TEMPLATE = (
+    "HTTP/1.1 400 Bad Request\r\n"
+    "Content-Type: text/html; charset=utf-8\r\n"
+    "Content-Length: {length}\r\n"
+    "Connection: close\r\n"
     "\r\n"
 )
 
@@ -83,6 +97,16 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
             if not chunk:
                 break
             data += chunk
+            if len(data) > MAX_REQUEST_BYTES:
+                body = (
+                    b"<!DOCTYPE html><html><body>"
+                    b"<h1>400 Bad Request</h1>"
+                    b"<p>Peticion demasiado grande.</p>"
+                    b"</body></html>"
+                )
+                header = HTTP_400_TEMPLATE.format(length=len(body)).encode("ascii")
+                conn.sendall(header + body)
+                return
 
         if not data:
             return
@@ -126,29 +150,38 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
     """
     Arranca el servidor HTTP y acepta conexiones en bucle.
 
-    Cada conexión se maneja en un hilo separado.
+    Cada conexión se maneja en un hilo del pool (ThreadPoolExecutor).
     """
     global HTML_INDEX
     HTML_INDEX = load_index_html()
 
+    stop_event = threading.Event()
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_sock.bind((host, port))
-        server_sock.listen(5)
+        server_sock.listen(64)  # backlog decente para picos breves
+        server_sock.settimeout(1.0)  # para permitir cerrar con Ctrl+C
 
         logging.info("Servidor HTTP (socket) escuchando en %s:%d", host, port)
 
-        try:
-            while True:
-                conn, addr = server_sock.accept()
-                thread = threading.Thread(
-                    target=handle_client,
-                    args=(conn, addr),
-                    daemon=True,
-                )
-                thread.start()
-        except KeyboardInterrupt:
-            logging.info("Se recibio Ctrl+C, deteniendo servidor...")
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            try:
+                while not stop_event.is_set():
+                    try:
+                        conn, addr = server_sock.accept()
+                    except socket.timeout:
+                        continue
+                    except OSError:
+                        break  # socket cerrado
+
+                    executor.submit(handle_client, conn, addr)
+            except KeyboardInterrupt:
+                logging.info("Se recibio Ctrl+C, deteniendo servidor...")
+                stop_event.set()
+            finally:
+                server_sock.close()
+                executor.shutdown(wait=True)
 
 
 if __name__ == "__main__":
