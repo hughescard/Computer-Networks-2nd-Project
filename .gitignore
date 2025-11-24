@@ -29,4 +29,5 @@ config/sessions.json
 # Archivos temporales
 *.tmp
 *.bak
+__pycache__/
 *~
