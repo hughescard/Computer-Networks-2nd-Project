@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from . import firewall_dynamic
+
 
 # Tipo de clave: IP sola o IP+MAC
 SessionKey = Tuple[str, Optional[str]]
@@ -212,6 +214,10 @@ def crear_sesion(
             ttl,
         )
         _save_to_disk()
+        # Permitir a la IP navegar
+        firewall_dynamic.permitir_ip(ip)
+        logging.info("Regla de firewall añadida para permitir navegación a %s", ip)
+
 
     return session
 
@@ -234,7 +240,11 @@ def obtener_sesion(ip: str, mac: Optional[str] = None) -> Optional[Session]:
             logging.info("Sesión expirada para %s; eliminando", key)
             _sessions.pop(key, None)
             _save_to_disk()
+            firewall_dynamic.denegar_ip(ip)
+            logging.info("Regla de firewall eliminada (sesión expirada) para %s", ip)
+
             return None
+        
 
         return session
 
@@ -254,6 +264,11 @@ def eliminar_sesion(ip: str, mac: Optional[str] = None) -> bool:
             _sessions.pop(key, None)
             logging.info("Sesión eliminada para %s", key)
             _save_to_disk()
+
+            # Eliminar regla de navegación
+            firewall_dynamic.denegar_ip(ip)
+            logging.info("Regla de firewall eliminada para %s", ip)
+
         return existed
 
 
