@@ -28,6 +28,22 @@ MAX_REQUEST_BYTES = int(os.getenv("PORTAL_HTTP_MAX_REQUEST", "65536"))
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 INDEX_TEMPLATE = TEMPLATES_DIR / "index.html"
+LOGIN_TEMPLATE = TEMPLATES_DIR / "login.html"
+LOGIN_SUCCESS_TEMPLATE = TEMPLATES_DIR / "login_success.html"
+LOGIN_ERROR_TEMPLATE = TEMPLATES_DIR / "login_error.html"
+
+# Mapeo ruta -> Path de plantilla (permitlist)
+TEMPLATE_ROUTE_MAP = {
+    "/": INDEX_TEMPLATE,
+    "/index": INDEX_TEMPLATE,
+    "/login": LOGIN_TEMPLATE,
+    "/success": LOGIN_SUCCESS_TEMPLATE,
+    "/error": LOGIN_ERROR_TEMPLATE,
+}
+
+# Cache en memoria de plantillas cargadas (route -> bytes)
+TEMPLATE_CACHE: dict[str, bytes] = {}
+
 
 # Plantillas de cabecera HTTP
 HTTP_OK_TEMPLATE = (
@@ -37,6 +53,16 @@ HTTP_OK_TEMPLATE = (
     "Connection: close\r\n"
     "\r\n"
 )
+
+
+HTTP_404_TEMPLATE = (
+    "HTTP/1.1 404 Not Found\r\n"
+    "Content-Type: text/html; charset=utf-8\r\n"
+    "Content-Length: {length}\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+)
+
 
 HTTP_405_TEMPLATE = (
     "HTTP/1.1 405 Method Not Allowed\r\n"
@@ -56,26 +82,38 @@ HTTP_400_TEMPLATE = (
     "\r\n"
 )
 
-# Aquí dejaremos en memoria el contenido de index.html
-HTML_INDEX: bytes = b""
 
 
-def load_index_html() -> bytes:
+
+
+def load_template(path: Path, fallback_message: str = "Plantilla no encontrada") -> bytes:
     """
-    Carga el contenido de src/templates/index.html en memoria.
-
-    Si no existe, devolvemos una página de error sencilla.
+    Lee y devuelve el contenido en bytes de la plantilla indicada.
+    En caso de error devuelve una página de error mínima.
     """
     try:
-        return INDEX_TEMPLATE.read_bytes()
+        return path.read_bytes()
     except FileNotFoundError:
-        logging.error("No se encontro la plantilla %s", INDEX_TEMPLATE)
+        logging.error("Plantilla no encontrada: %s", path)
         return (
-            b"<!DOCTYPE html><html><body>"
-            b"<h1>Error interno</h1>"
-            b"<p>No se encontro la plantilla index.html.</p>"
-            b"</body></html>"
-        )
+            f"<!DOCTYPE html><html><body><h1>Error interno</h1><p>{fallback_message}.</p></body></html>"
+        ).encode("utf-8")
+    except Exception as exc:
+        logging.error("Error leyendo plantilla %s: %s", path, exc)
+        return (
+            "<!DOCTYPE html><html><body><h1>Error interno</h1><p>Fallo leyendo plantilla.</p></body></html>"
+        ).encode("utf-8")
+
+
+def fill_template_cache() -> None:
+    """
+    Carga en memoria todas las plantillas definidas en TEMPLATE_ROUTE_MAP.
+    Safe to call at startup.
+    """
+    for route, p in TEMPLATE_ROUTE_MAP.items():
+        if route not in TEMPLATE_CACHE:
+            TEMPLATE_CACHE[route] = load_template(p, f"No se encontró {p.name}")
+    logging.info("Plantillas pre-cargadas: %s", ", ".join(sorted(set(TEMPLATE_CACHE.keys()))))
 
 
 def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
@@ -137,10 +175,38 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
             conn.sendall(header + body)
             return
 
-        # Respuesta 200 OK con la página HTML de prueba
-        body = HTML_INDEX
+        # Normalizar la ruta: quitar query string y fragmento
+        route = path.split("?", 1)[0].split("#", 1)[0]
+
+        # Rechazar intentos evidentes de path-traversal o percent-encoding peligroso
+        if ".." in route or "%" in route:
+            logging.warning("Intento de ruta inválida desde %s: %s", addr[0], path)
+            body = (
+                b"<!DOCTYPE html><html><body>"
+                b"<h1>404 Not Found</h1><p>Ruta no encontrada.</p>"
+                b"</body></html>"
+            )
+            header = HTTP_404_TEMPLATE.format(length=len(body)).encode("ascii")
+            conn.sendall(header + body)
+            return
+
+        body = TEMPLATE_CACHE.get(route)
+        if body is None:
+            # Ruta no encontrada → 404 real
+            body = (
+                b"<!DOCTYPE html><html><body>"
+                b"<h1>404 Not Found</h1><p>Ruta no encontrada.</p>"
+                b"</body></html>"
+            )
+            header = HTTP_404_TEMPLATE.format(length=len(body)).encode("ascii")
+            conn.sendall(header + body)
+            return
+
+        # Si llegamos aquí, hay plantilla válida: enviar 200 OK
         header = HTTP_OK_TEMPLATE.format(length=len(body)).encode("ascii")
         conn.sendall(header + body)
+
+
 
     finally:
         conn.close()
@@ -152,8 +218,8 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
 
     Cada conexión se maneja en un hilo del pool (ThreadPoolExecutor).
     """
-    global HTML_INDEX
-    HTML_INDEX = load_index_html()
+    # Precargar todas las plantillas en cache
+    fill_template_cache()
 
     stop_event = threading.Event()
 
