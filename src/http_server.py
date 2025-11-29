@@ -22,6 +22,7 @@ from typing import Tuple
 
 from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
+import sessions
 
 
 # Host y puerto del servidor HTTP (configurables por variables de entorno)
@@ -31,6 +32,8 @@ PORT = int(os.getenv("PORTAL_HTTP_PORT", "8080"))
 MAX_WORKERS = int(os.getenv("PORTAL_HTTP_WORKERS", "16"))
 # Límite de bytes a leer de la petición (cabeceras + body) para evitar consumo desmedido
 MAX_REQUEST_BYTES = int(os.getenv("PORTAL_HTTP_MAX_REQUEST", "65536"))
+# TTL de las sesiones autenticadas (en segundos); usa el valor por defecto si no se define
+SESSION_TTL = int(os.getenv("PORTAL_SESSION_TTL", str(sessions.DEFAULT_SESSION_TTL)))
 
 # Directorios de plantillas
 BASE_DIR = Path(__file__).resolve().parent
@@ -279,6 +282,17 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
             try:
                 if authenticate(username, password, USERS):
                     logging.info("Login exitoso para '%s' desde %s", username, addr[0])
+                    try:
+                        sessions.crear_sesion(username, addr[0], ttl=SESSION_TTL)
+                        logging.info(
+                            "Sesion creada para %s (IP=%s, ttl=%s)",
+                            username,
+                            addr[0],
+                            SESSION_TTL,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logging.exception("No se pudo crear la sesión tras login: %s", exc)
+
                     body = TEMPLATE_CACHE.get("/success") or "<h1>Autenticación exitosa</h1>".encode("utf-8")
                 else:
                     logging.info("Login fallido para '%s' desde %s", username, addr[0])
