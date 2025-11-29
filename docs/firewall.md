@@ -42,3 +42,24 @@ En Debian/Ubuntu, instala el paquete `iptables-persistent` para que las reglas g
 sudo apt-get update
 sudo apt-get install iptables-persistent
 ```
+
+## Reglas dinámicas por cliente (login)
+
+Cuando un cliente se autentica exitosamente, el portal crea una sesión y añade una regla dinámica en la cadena FORWARD para permitir el enrutamiento desde la IP del cliente hacia Internet.
+
+Ejemplo de regla añadida:
+
+    iptables -I FORWARD 1 -s <IP_CLIENTE> -j ACCEPT
+
+- Se inserta en la posición 1 para darle prioridad.
+- Al cerrar la sesión (o expirar el TTL) se elimina la regla:
+
+    iptables -D FORWARD -s <IP_CLIENTE> -j ACCEPT
+
+Notas operativas:
+- Requiere que `scripts/firewall_init.sh` configure FORWARD en DROP por defecto.
+- El módulo `src/firewall_dynamic.py` es el encargado de añadir/retirar reglas dinámicas.
+- El proceso que modifica iptables debe ejecutarse con privilegios (root) o a través de un helper confiable.
+- Para depuración puedes listar las reglas FORWARD con:
+    sudo iptables -L FORWARD -n -v
+
