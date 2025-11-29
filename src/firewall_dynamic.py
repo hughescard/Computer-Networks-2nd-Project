@@ -8,11 +8,21 @@ cuando un usuario inicia o cierra sesión en el portal cautivo.
 
 import subprocess
 import logging
+import shutil
 
-IPTABLES = "/usr/sbin/iptables"   # O usa `command -v iptables`
+IPTABLES = shutil.which("iptables") or "/sbin/iptables"
+
+
+def _ensure_binary() -> bool:
+    if not IPTABLES:
+        logging.error("[FIREWALL] No se encontró el binario de iptables en PATH.")
+        return False
+    return True
 
 def _run(cmd: list[str]) -> bool:
     """Ejecuta un comando y devuelve True/False según éxito."""
+    if not _ensure_binary():
+        return False
     try:
         subprocess.run(cmd, check=True)
         logging.info("[FIREWALL] Ejecutado: %s", " ".join(cmd))

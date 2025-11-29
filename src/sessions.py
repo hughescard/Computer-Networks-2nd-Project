@@ -24,7 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from . import firewall_dynamic
+# Helper para reglas dinámicas de firewall
+import firewall_dynamic
 
 
 # Tipo de clave: IP sola o IP+MAC
@@ -159,6 +160,11 @@ def _load_from_disk(path: Path = DEFAULT_SESSIONS_FILE) -> None:
         _sessions.clear()
         _sessions.update(restored)
         logging.info("Sesiones restauradas desde disco: %d activas", len(_sessions))
+        # Reaplicar reglas de firewall para sesiones vigentes
+        for sess in _sessions.values():
+            firewall_dynamic.permitir_ip(sess.ip)
+        if _sessions:
+            logging.info("Reglas de firewall re-aplicadas para sesiones activas tras carga en disco.")
 
 
 def _make_key(ip: str, mac: Optional[str] = None) -> SessionKey:
@@ -287,7 +293,9 @@ def limpiar_sesiones_expiradas() -> int:
             key for key, sess in _sessions.items() if sess.is_expired(now)
         ]
         for key in keys_to_delete:
-            _sessions.pop(key, None)
+            sess = _sessions.pop(key, None)
+            if sess:
+                firewall_dynamic.denegar_ip(sess.ip)
             removed += 1
         if removed:
             _save_to_disk()
