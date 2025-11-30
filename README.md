@@ -45,6 +45,7 @@ La estructura básica de directorios es:
 ├── scripts/    # Scripts para firewall, arranque/parada del servicio, etc.
 ├── tests/      # Pruebas y casos de test
 └── logs/       # Logs de ejecución (normalmente ignorados por git)
+```
 
 ## Servidor HTTP básico (issue #5)
 
@@ -64,3 +65,11 @@ La estructura básica de directorios es:
 - Para depuración: `sudo bash scripts/firewall_clear.sh` (deshabilita forwarding, limpia reglas y deja todo en ACCEPT; también intenta persistir con `iptables-save`).
 - Ajusta `WAN_IF` y `LAN_IF` en `scripts/firewall_init.sh` según los nombres de interfaz del gateway.
 - Para cargar reglas al arranque instala `iptables-persistent` (Debian/Ubuntu: `sudo apt-get install iptables-persistent`).
+
+## Documentación clave
+
+- `docs/topologia.md`: IPs, máscaras, gateway y rutas del laboratorio.
+- `docs/firewall.md`: reglas base, redirección al portal y notas de NAT.
+- `docs/arquitectura.md`: módulos y flujo lógico del portal cautivo.
+- `docs/desarrollo.md`: preparar entorno, ejecutar el servidor y convención de commits.
+- `docs/pruebas_basicas.md`: escenarios y guía de ejecución para el issue #12; usa `tests/pruebas_basicas.sh`.

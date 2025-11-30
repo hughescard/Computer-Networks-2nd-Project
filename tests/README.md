@@ -15,3 +15,26 @@ Aunque parte de la documentación de pruebas quede en `docs/` (por ejemplo `docs
 - Nombrar las pruebas de forma descriptiva (por ejemplo `test_login_basico.sh`, `test_concurrencia.py`, etc.).
 - Indicar en los propios scripts cómo se ejecutan y qué se espera que pase.
 - En la documentación de pruebas se debería indicar qué pruebas viven en este directorio y cómo lanzarlas.
+
+## Scripts actuales
+
+- `pruebas_basicas.sh`: prueba automatizada para el Issue #12. Ejecutar desde un cliente de la LAN:
+
+  ```bash
+  PORTAL_HOST=192.168.50.1 PORTAL_PORT=8080 \
+  TARGET_URL=http://example.com \
+  PORTAL_USER=admin PORTAL_PASS=admin \
+  bash tests/pruebas_basicas.sh
+  ```
+
+  Ver `docs/pruebas_basicas.md` para el contexto y los escenarios completos.
+
+- `pruebas_contenedores.sh`: ejecuta `pruebas_basicas.sh` dentro de varios contenedores Docker con IPs distintas (macvlan) para probar concurrencia desde un único host cliente.
+
+  ```bash
+  LAN_IF=enp0s3 CLIENT_IPS="192.168.50.101 192.168.50.102 192.168.50.103" \
+  PORTAL_HOST=192.168.50.1 PORTAL_PORT=8080 \
+  bash tests/pruebas_contenedores.sh
+  ```
+
+  Requiere Docker y permisos para crear redes macvlan en el cliente.

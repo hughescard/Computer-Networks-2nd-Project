@@ -13,6 +13,7 @@ Algunos documentos que se crearán a lo largo del desarrollo:
 - `logs.md`: formato y ubicación de los archivos de log.
 - `antisuplantacion.md`: enfoque para el control de suplantación de IP/MAC.
 - `checklist_requisitos.md`: relación entre requisitos del enunciado y su implementación.
+- `pruebas_basicas.md`: escenarios y resultados de las pruebas funcionales (issue #12).
 - Otros documentos que vayan siendo necesarios (pruebas, diseño de UX, etc.).
 
 ## Convenciones

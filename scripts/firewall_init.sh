@@ -36,10 +36,12 @@ persist_rules() {
 }
 
 # Interfaces (ajustar si cambian los nombres)
-WAN_IF="enp0s3"   # interfaz hacia Internet (NAT VirtualBox)
-LAN_IF="enp0s8"   # interfaz hacia la red interna 192.168.50.0/24
+WAN_IF="enp0s3"          # interfaz hacia Internet (NAT VirtualBox)
+LAN_IF="enp0s8"          # interfaz hacia la red interna 192.168.50.0/24
+HOST_IF="enp0s9"         # interfaz host-only hacia el PC admin
+HOST_NET="192.168.56.0/24"
 
-PORTAL_HTTP_PORT=80   # puerto donde escuchará el portal cautivo
+PORTAL_HTTP_PORT=80      # puerto donde escuchará el portal cautivo
 
 if [ "$EUID" -ne 0 ]; then
   echo "Este script debe ejecutarse como root" >&2
@@ -75,6 +77,16 @@ echo "[*] Permitiendo tráfico local (loopback)..."
 echo "[*] Permitiendo tráfico ya establecido/relacionado..."
 "$IPTABLES_BIN" -A INPUT   -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 "$IPTABLES_BIN" -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+### --- NUEVO: ADMIN POR HOST-ONLY (HOST_IF / HOST_NET) ---
+
+echo "[*] Permitiendo ICMP (ping) desde el host (host-only)..."
+"$IPTABLES_BIN" -A INPUT -i "$HOST_IF" -s "$HOST_NET" -p icmp -j ACCEPT
+
+echo "[*] Permitiendo SSH al gateway desde el host (host-only)..."
+"$IPTABLES_BIN" -A INPUT -i "$HOST_IF" -s "$HOST_NET" -p tcp --dport 22 -j ACCEPT
+
+### --- FIN BLOQUE HOST-ONLY ---
 
 echo "[*] Permitiendo ICMP (ping) desde la LAN al gateway (debug)..."
 "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p icmp -j ACCEPT

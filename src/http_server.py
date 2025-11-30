@@ -396,8 +396,11 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
 
 
 if __name__ == "__main__":
+    log_level = os.getenv("PORTAL_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, log_level, logging.INFO)
     logging.basicConfig(
-        level=logging.INFO,
+        level=level,
         format="%(asctime)s [%(levelname)s] %(message)s",
+        force=True,
     )
     run_server()

@@ -23,8 +23,8 @@ Este documento describe la configuración base del firewall en la máquina **gat
   sudo bash scripts/firewall_init.sh
   ```
 
-  - Ajusta las variables `WAN_IF` y `LAN_IF` en el script si cambian los nombres de interfaz.
-  - Al final ejecuta `iptables-save` (si está disponible) para escribir las reglas en `/etc/iptables/rules.v4`.
+- Ajusta las variables `WAN_IF` y `LAN_IF` en el script si cambian los nombres de interfaz.
+- Al final ejecuta `iptables-save` (si está disponible) para escribir las reglas en `/etc/iptables/rules.v4`.
 
 - **Limpieza / modo abierto:** deshabilita forwarding, limpia las tablas y deja todas las cadenas en ACCEPT (útil solo para depuración).
 
@@ -43,23 +43,54 @@ sudo apt-get update
 sudo apt-get install iptables-persistent
 ```
 
+## Redirección automática al portal y DNS
+
+- El script `scripts/firewall_init.sh` añade una regla en `PREROUTING` (tabla `nat`) que redirige cualquier tráfico HTTP (`--dport 80`) que entra por la LAN al puerto real del portal (`PORTAL_HTTP_PORT`, por defecto 8080).
+- También abre DNS (TCP/UDP 53) en FORWARD para que los clientes puedan resolver dominios y alcancen la redirección.
+- Ejemplo de regla de redirección (valores por defecto):
+
+```bash
+iptables -t nat -A PREROUTING -i enp0s8 -p tcp --dport 80 -j REDIRECT --to-ports 8080
+```
+
+Comportamiento esperado:
+- Cliente no autenticado → cualquier sitio HTTP abre el portal cautivo.
+- Cliente autenticado → el portal inserta una regla de bypass (ver abajo) y el tráfico HTTP ya no se redirige.
+
 ## Reglas dinámicas por cliente (login)
 
-Cuando un cliente se autentica exitosamente, el portal crea una sesión y añade una regla dinámica en la cadena FORWARD para permitir el enrutamiento desde la IP del cliente hacia Internet.
+Cuando un cliente se autentica exitosamente, el portal crea una sesión y añade reglas dinámicas para permitir el enrutamiento desde la IP del cliente hacia Internet y saltar la redirección HTTP.
 
 Ejemplo de regla añadida:
 
+    # Permitir forwarding para la IP autenticada
     iptables -I FORWARD 1 -s <IP_CLIENTE> -j ACCEPT
+
+    # Evitar que sus peticiones HTTP sigan siendo redirigidas al portal
+    iptables -t nat -I PREROUTING 1 -i enp0s8 -s <IP_CLIENTE> -p tcp --dport 80 -j RETURN
 
 - Se inserta en la posición 1 para darle prioridad.
 - Al cerrar la sesión (o expirar el TTL) se elimina la regla:
 
     iptables -D FORWARD -s <IP_CLIENTE> -j ACCEPT
+    iptables -t nat -D PREROUTING -i enp0s8 -s <IP_CLIENTE> -p tcp --dport 80 -j RETURN
 
 Notas operativas:
 - Requiere que `scripts/firewall_init.sh` configure FORWARD en DROP por defecto.
-- El módulo `src/firewall_dynamic.py` es el encargado de añadir/retirar reglas dinámicas.
+- El módulo `src/firewall_dynamic.py` es el encargado de añadir/retirar reglas dinámicas (FORWARD + bypass de redirección).
+- El endpoint `POST /login` del servidor (`src/http_server.py`) crea la sesión llamando a `sessions.crear_sesion(...)`, lo que dispara las reglas anteriores de forma automática tras autenticación exitosa.
 - El proceso que modifica iptables debe ejecutarse con privilegios (root) o a través de un helper confiable.
 - Para depuración puedes listar las reglas FORWARD con:
     sudo iptables -L FORWARD -n -v
 
+## Bypass temporal para descargas
+
+Si necesitas dar Internet completo a un cliente puntual (por ejemplo, para instalar paquetes) sin tocar el resto de reglas, usa el helper:
+
+```bash
+sudo bash scripts/firewall_bypass.sh enable <IP_CLIENTE>
+# cuando ya no se necesite:
+sudo bash scripts/firewall_bypass.sh disable <IP_CLIENTE>
+```
+
+Esto inserta (o elimina) un `RETURN` en PREROUTING y un `ACCEPT` en FORWARD para la IP indicada, evitando la redirección y permitiendo la navegación.
