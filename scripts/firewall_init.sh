@@ -39,7 +39,8 @@ persist_rules() {
 WAN_IF="enp0s3"   # interfaz hacia Internet (NAT VirtualBox)
 LAN_IF="enp0s8"   # interfaz hacia la red interna 192.168.50.0/24
 
-PORTAL_HTTP_PORT=80   # puerto donde escuchará el portal cautivo
+PORTAL_HTTP_PORT=${PORTAL_HTTP_PORT:-8080}   # puerto real donde escuchará el portal cautivo
+CAPTIVE_HTTP_PORT=${CAPTIVE_HTTP_PORT:-80}   # puerto que interceptamos de los clientes (HTTP claro)
 
 if [ "$EUID" -ne 0 ]; then
   echo "Este script debe ejecutarse como root" >&2
@@ -79,11 +80,22 @@ echo "[*] Permitiendo tráfico ya establecido/relacionado..."
 echo "[*] Permitiendo ICMP (ping) desde la LAN al gateway (debug)..."
 "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p icmp -j ACCEPT
 
+echo "[*] Permitiendo DNS desde la LAN hacia la WAN..."
+"$IPTABLES_BIN" -A FORWARD -i "$LAN_IF" -o "$WAN_IF" -p udp --dport 53 -j ACCEPT
+"$IPTABLES_BIN" -A FORWARD -i "$LAN_IF" -o "$WAN_IF" -p tcp --dport 53 -j ACCEPT
+
 echo "[*] Permitiendo SSH al gateway desde la LAN (opcional)..."
 "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p tcp --dport 22 -j ACCEPT
 
-echo "[*] Permitiendo acceso HTTP al portal desde la LAN..."
+echo "[*] Permitiendo acceso HTTP al portal desde la LAN (puerto $PORTAL_HTTP_PORT)..."
 "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p tcp --dport "$PORTAL_HTTP_PORT" -j ACCEPT
+
+echo "[*] Redirigiendo HTTP de clientes no autenticados hacia el portal..."
+"$IPTABLES_BIN" -t nat -A PREROUTING -i "$LAN_IF" -p tcp --dport "$CAPTIVE_HTTP_PORT" -j REDIRECT --to-ports "$PORTAL_HTTP_PORT"
+
+# NAT/enmascaramiento para que el tráfico de la LAN salga con la IP del gateway (necesario para resolver DNS y navegar)
+echo "[*] Habilitando MASQUERADE en la salida WAN..."
+"$IPTABLES_BIN" -t nat -A POSTROUTING -o "$WAN_IF" -j MASQUERADE
 
 echo "[*] Firewall base aplicado."
 "$IPTABLES_BIN" -L -n -v
