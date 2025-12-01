@@ -119,3 +119,92 @@ Notas operativas:
    - El comando `sudo iptables -t nat -L PREROUTING -n --line-numbers` debe mostrar una regla `RETURN` en primera posición para la IP del cliente.
    - El comando `sudo iptables -L FORWARD -n --line-numbers` debe mostrar `ACCEPT` para la IP del cliente.
    - El mismo `curl http://example.com` debe llegar al destino real (no al portal).
+
+
+NAT / Enmascaramiento (Issue #14)
+
+El portal cautivo actúa como gateway entre la red interna (LAN) y la red externa (WAN).
+Los clientes en la LAN usan direcciones privadas (por ejemplo, 192.168.50.x) que no son válidas en Internet.
+
+Para que puedan acceder a DNS y navegación web tras iniciar sesión, el gateway debe realizar NAT (Network Address Translation), concretamente enmascaramiento (MASQUERADE).
+Esto hace que:
+
+Las peticiones de cualquier cliente salgan hacia Internet usando la IP pública del gateway.
+
+Las respuestas regresen correctamente al gateway, que luego las reenvía al cliente correspondiente.
+
+¿Por qué es necesario?
+
+Sin NAT, una consulta DNS desde un cliente parecería venir de 192.168.50.x.
+Internet no sabe devolver paquetes hacia redes privadas, por lo que:
+
+Las respuestas nunca volverían al cliente.
+
+Los clientes verían errores como “server not found”, “DNS unreachable” o “timeout”.
+
+Implementación en el script
+
+El script scripts/firewall_init.sh configura NAT automáticamente mediante la siguiente regla:
+
+iptables -t nat -A POSTROUTING -o <WAN_IF> -j MASQUERADE
+
+
+Con los valores por defecto del proyecto:
+
+iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
+
+
+Significado:
+
+POSTROUTING → se aplica justo antes de que el paquete salga hacia la WAN.
+
+-o enp0s3 → la interfaz de salida hacia Internet.
+
+MASQUERADE → reemplaza la IP origen por la IP pública del gateway.
+
+Esta regla es suficiente para:
+
+Permitir que DNS funcione correctamente.
+
+Permitir navegación web completa a los clientes después de autenticarse.
+
+Mantener el portal cautivo en funcionamiento, ya que el firewall sigue bloqueando tráfico LAN→WAN por defecto hasta que el portal inserte reglas dinámicas para cada cliente autenticado.
+
+Relación con reglas dinámicas
+
+El NAT está siempre activo, pero no libera la navegación por sí mismo.
+La navegación solo se habilita cuando el portal añade:
+
+Una regla de FORWARD para la IP del cliente autenticado.
+
+Una regla de bypass en PREROUTING para evitar la redirección HTTP hacia el portal.
+
+De este modo:
+
+NAT proporciona la traducción de direcciones.
+
+El portal cautivo proporciona el control de acceso.
+
+Cómo verificar que NAT funciona
+
+En el gateway:
+
+sudo iptables -t nat -L POSTROUTING -n -v
+
+
+Deberías ver una línea similar a:
+
+MASQUERADE  all  --  0.0.0.0/0   0.0.0.0/0   /* salida WAN */  OUT=enp0s3
+
+
+En un cliente sin autenticar:
+
+nslookup example.com debe resolver correctamente, gracias al NAT para DNS.
+
+En un cliente autenticado:
+
+curl https://example.com debe conectar al destino real.
+
+En sudo iptables -t nat -L PREROUTING -n --line-numbers debe existir un RETURN para su IP.
+
+En sudo iptables -L FORWARD -n --line-numbers debe existir un ACCEPT para su IP.

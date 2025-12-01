@@ -84,6 +84,12 @@ echo "[*] Permitiendo DNS desde la LAN hacia la WAN..."
 "$IPTABLES_BIN" -A FORWARD -i "$LAN_IF" -o "$WAN_IF" -p udp --dport 53 -j ACCEPT
 "$IPTABLES_BIN" -A FORWARD -i "$LAN_IF" -o "$WAN_IF" -p tcp --dport 53 -j ACCEPT
 
+# NAT/enmascaramiento para que el tráfico de la LAN salga con la IP del gateway (necesario para resolver DNS y navegar)
+echo "[*] Habilitando MASQUERADE en la salida WAN..."
+"$IPTABLES_BIN" -t nat -A POSTROUTING -o "$WAN_IF" -j MASQUERADE
+
+
+
 echo "[*] Permitiendo SSH al gateway desde la LAN (opcional)..."
 "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p tcp --dport 22 -j ACCEPT
 
@@ -93,9 +99,7 @@ echo "[*] Permitiendo acceso HTTP al portal desde la LAN (puerto $PORTAL_HTTP_PO
 echo "[*] Redirigiendo HTTP de clientes no autenticados hacia el portal..."
 "$IPTABLES_BIN" -t nat -A PREROUTING -i "$LAN_IF" -p tcp --dport "$CAPTIVE_HTTP_PORT" -j REDIRECT --to-ports "$PORTAL_HTTP_PORT"
 
-# NAT/enmascaramiento para que el tráfico de la LAN salga con la IP del gateway (necesario para resolver DNS y navegar)
-echo "[*] Habilitando MASQUERADE en la salida WAN..."
-"$IPTABLES_BIN" -t nat -A POSTROUTING -o "$WAN_IF" -j MASQUERADE
+
 
 echo "[*] Firewall base aplicado."
 "$IPTABLES_BIN" -L -n -v
