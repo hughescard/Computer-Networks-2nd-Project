@@ -162,7 +162,11 @@ def _load_from_disk(path: Path = DEFAULT_SESSIONS_FILE) -> None:
         logging.info("Sesiones restauradas desde disco: %d activas", len(_sessions))
         # Reaplicar reglas de firewall para sesiones vigentes
         for sess in _sessions.values():
-            firewall_dynamic.permitir_ip(sess.ip)
+            if sess.mac:
+                firewall_dynamic.permitir_ip_mac(sess.ip, sess.mac)
+            else:
+                firewall_dynamic.permitir_ip(sess.ip)
+
         if _sessions:
             logging.info("Reglas de firewall re-aplicadas para sesiones activas tras carga en disco.")
 
@@ -220,9 +224,15 @@ def crear_sesion(
             ttl,
         )
         _save_to_disk()
-        # Permitir a la IP navegar
-        firewall_dynamic.permitir_ip(ip)
-        logging.info("Regla de firewall añadida para permitir navegación a %s", ip)
+
+        # Permitir a la IP/mac navegar (si hay mac, usar ip+mac)
+        if session.mac:
+            firewall_dynamic.permitir_ip_mac(session.ip, session.mac)
+            logging.info("Regla de firewall añadida para permitir navegación a %s (MAC %s)", session.ip, session.mac)
+        else:
+            firewall_dynamic.permitir_ip(session.ip)
+            logging.info("Regla de firewall añadida para permitir navegación a %s", session.ip)
+
 
 
     return session
@@ -246,7 +256,11 @@ def obtener_sesion(ip: str, mac: Optional[str] = None) -> Optional[Session]:
             logging.info("Sesión expirada para %s; eliminando", key)
             _sessions.pop(key, None)
             _save_to_disk()
-            firewall_dynamic.denegar_ip(ip)
+            if session.mac:
+                firewall_dynamic.denegar_ip_mac(session.ip, session.mac)
+            else:
+                firewall_dynamic.denegar_ip(session.ip)
+
             logging.info("Regla de firewall eliminada (sesión expirada) para %s", ip)
 
             return None
@@ -271,9 +285,14 @@ def eliminar_sesion(ip: str, mac: Optional[str] = None) -> bool:
             logging.info("Sesión eliminada para %s", key)
             _save_to_disk()
 
-            # Eliminar regla de navegación
-            firewall_dynamic.denegar_ip(ip)
-            logging.info("Regla de firewall eliminada para %s", ip)
+            # Eliminar regla de navegación (si existía MAC, usarla)
+            if mac := key[1]:
+                firewall_dynamic.denegar_ip_mac(ip, mac)
+                logging.info("Regla de firewall eliminada para %s (MAC %s)", ip, mac)
+            else:
+                firewall_dynamic.denegar_ip(ip)
+                logging.info("Regla de firewall eliminada para %s", ip)
+
 
         return existed
 
@@ -294,8 +313,11 @@ def limpiar_sesiones_expiradas() -> int:
         ]
         for key in keys_to_delete:
             sess = _sessions.pop(key, None)
-            if sess:
+            if sess.mac:
+                firewall_dynamic.denegar_ip_mac(sess.ip, sess.mac)
+            else:
                 firewall_dynamic.denegar_ip(sess.ip)
+
             removed += 1
         if removed:
             _save_to_disk()
