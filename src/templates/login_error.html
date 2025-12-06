@@ -4,14 +4,117 @@
     <meta charset="UTF-8">
     <title>Error de autenticación</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
-        p { color: #c0392b; font-size: 18px; }
-        a { display: inline-block; margin-top: 20px; color: #2980b9; }
+        :root {
+            --danger: #d7263d;
+            --danger-dark: #a01b2e;
+            --surface: #ffffff;
+            --text: #1f2a37;
+            --muted: #5f6b7f;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            background: linear-gradient(135deg, #ffd4d4, #5b0b17) fixed;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px;
+            color: var(--text);
+        }
+        .card {
+            width: min(460px, 100%);
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+            box-shadow: 0 18px 40px rgba(215, 38, 61, 0.35);
+        }
+        .status-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: rgba(215, 38, 61, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--danger);
+            font-size: 42px;
+            font-weight: bold;
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 1.7rem;
+            color: var(--danger-dark);
+        }
+        p {
+            margin: 0 0 20px;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+        .actions a {
+            display: inline-block;
+            text-decoration: none;
+            padding: 12px 32px;
+            border-radius: 999px;
+            font-weight: 600;
+            transition: opacity 0.2s ease;
+            background: var(--danger);
+            color: var(--surface);
+        }
+        .actions a:hover {
+            opacity: 0.85;
+        }
+        .tips {
+            margin-top: 24px;
+            text-align: left;
+            font-size: 0.95rem;
+            background: #fff5f5;
+            border: 1px solid rgba(215, 38, 61, 0.25);
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .tips h2 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--danger-dark);
+        }
+        .tips ul {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+        .tips li + li {
+            margin-top: 6px;
+        }
+        .tips strong {
+            color: var(--text);
+        }
     </style>
 </head>
 <body>
-    <h1>Acceso denegado</h1>
-    <p>Usuario o contraseña incorrectos.</p>
-    <a href="/login">Intentar nuevamente</a>
+    <div class="card">
+        <div class="status-icon">!</div>
+        <h1>Acceso denegado</h1>
+        <p>El usuario o la contraseña no coinciden con el registro del portal.</p>
+
+        <div class="actions">
+            <a href="/login">Intentar nuevamente</a>
+        </div>
+
+        <div class="tips">
+            <h2>Revisa lo siguiente</h2>
+            <ul>
+                <li><strong>Mayúsculas y minúsculas importan:</strong> verifica que el bloqueo de mayúsculas esté desactivado.</li>
+                <li>Comprueba que tu usuario está activo y no haya caducado tu acceso temporal.</li>
+                <li>Si olvidaste tus credenciales o recibes el error repetidamente, contacta al administrador para restablecer la contraseña.</li>
+            </ul>
+        </div>
+    </div>
 </body>
 </html>
