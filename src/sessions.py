@@ -313,6 +313,8 @@ def limpiar_sesiones_expiradas() -> int:
         ]
         for key in keys_to_delete:
             sess = _sessions.pop(key, None)
+            if not sess:
+                continue
             if sess.mac:
                 firewall_dynamic.denegar_ip_mac(sess.ip, sess.mac)
             else:

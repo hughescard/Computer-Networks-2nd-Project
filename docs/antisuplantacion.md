@@ -24,19 +24,20 @@ tanto la IP como la dirección MAC cuando sea posible.
 - Comprobar regla NAT/POSTROUTING:
   ```bash
   sudo iptables -t nat -L POSTROUTING -n -v
+  ```
 
 - Comprobar reglas dinámicas (FORWARD + PREROUTING) para un cliente:
 
   ```bash
-sudo iptables -L FORWARD -n --line-numbers | grep <IP>
-sudo iptables -t nat -L PREROUTING -n --line-numbers | grep <IP>
+  sudo iptables -L FORWARD -n --line-numbers | grep <IP>
+  sudo iptables -t nat -L PREROUTING -n --line-numbers | grep <IP>
+  ```
 
-- Si la sesión contiene MAC, la regla mostrará match mac y --mac-source <MAC>.
+- Si la sesión contiene MAC, la regla mostrará match mac y `--mac-source <MAC>`.
 
 ## Recomendaciones adicionales
 
 *   **Hacer expiración corta para sesiones (TTL razonable).**
 *   **Registrar y alertar si se detecta actividad anómala** (IP con MAC cambiante).
 *   **En despliegues sensibles, usar port-security en switches** (limita cambio de MAC en puertos) o 802.1X.
-
 
