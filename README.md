@@ -96,6 +96,7 @@ La estructura básica de directorios es:
 - `docs/desarrollo.md`: preparar entorno, ejecutar el servidor (como root) y convención de commits (`scripts/commit.sh`).
 - `docs/pruebas_basicas.md`: escenarios ejecutados con múltiples clientes (issue #12).
 - `docs/antisuplantacion.md`: enfoque IP+MAC para reducir la suplantación (issue #16).
+- `docs/https.md`: generación de certificados y activación de HTTPS con la stdlib (issue #15).
 
 ## Notas adicionales
 

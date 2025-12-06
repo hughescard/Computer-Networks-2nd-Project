@@ -41,6 +41,7 @@ LAN_IF="enp0s8"   # interfaz hacia la red interna 192.168.50.0/24
 
 PORTAL_HTTP_PORT=${PORTAL_HTTP_PORT:-8080}   # puerto real donde escuchará el portal cautivo
 CAPTIVE_HTTP_PORT=${CAPTIVE_HTTP_PORT:-80}   # puerto que interceptamos de los clientes (HTTP claro)
+PORTAL_HTTPS_PORT=${PORTAL_HTTPS_PORT:-}     # si se define, habilita un puerto TLS para el portal
 
 if [ "$EUID" -ne 0 ]; then
   echo "Este script debe ejecutarse como root" >&2
@@ -95,6 +96,11 @@ echo "[*] Permitiendo SSH al gateway desde la LAN (opcional)..."
 
 echo "[*] Permitiendo acceso HTTP al portal desde la LAN (puerto $PORTAL_HTTP_PORT)..."
 "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p tcp --dport "$PORTAL_HTTP_PORT" -j ACCEPT
+
+if [ -n "$PORTAL_HTTPS_PORT" ]; then
+  echo "[*] Permitiendo acceso HTTPS al portal desde la LAN (puerto $PORTAL_HTTPS_PORT)..."
+  "$IPTABLES_BIN" -A INPUT -i "$LAN_IF" -p tcp --dport "$PORTAL_HTTPS_PORT" -j ACCEPT
+fi
 
 echo "[*] Redirigiendo HTTP de clientes no autenticados hacia el portal..."
 "$IPTABLES_BIN" -t nat -A PREROUTING -i "$LAN_IF" -p tcp --dport "$CAPTIVE_HTTP_PORT" -j REDIRECT --to-ports "$PORTAL_HTTP_PORT"

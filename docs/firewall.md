@@ -23,7 +23,8 @@ Este documento describe la configuración base del firewall en la máquina **gat
   sudo bash scripts/firewall_init.sh
   ```
 
-  - Ajusta las variables `WAN_IF` y `LAN_IF` en el script si cambian los nombres de interfaz.
+- Ajusta las variables `WAN_IF` y `LAN_IF` en el script si cambian los nombres de interfaz.
+- Si exportas `PORTAL_HTTPS_PORT`, también se abrirá ese puerto para el portal TLS (issue #15).
   - Al final ejecuta `iptables-save` (si está disponible) para escribir las reglas en `/etc/iptables/rules.v4`.
 
 - **Limpieza / modo abierto:** deshabilita forwarding, limpia las tablas y deja todas las cadenas en ACCEPT (útil solo para depuración).
