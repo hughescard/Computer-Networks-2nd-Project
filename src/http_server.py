@@ -22,7 +22,11 @@ from typing import Tuple
 
 from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
-import sessions
+
+
+from sessions import crear_sesion  # o import sessions
+import arp_lookup
+
 
 
 # Host y puerto del servidor HTTP (configurables por variables de entorno)
@@ -32,8 +36,6 @@ PORT = int(os.getenv("PORTAL_HTTP_PORT", "8080"))
 MAX_WORKERS = int(os.getenv("PORTAL_HTTP_WORKERS", "16"))
 # Límite de bytes a leer de la petición (cabeceras + body) para evitar consumo desmedido
 MAX_REQUEST_BYTES = int(os.getenv("PORTAL_HTTP_MAX_REQUEST", "65536"))
-# TTL de las sesiones autenticadas (en segundos); usa el valor por defecto si no se define
-SESSION_TTL = int(os.getenv("PORTAL_SESSION_TTL", str(sessions.DEFAULT_SESSION_TTL)))
 
 # Directorios de plantillas
 BASE_DIR = Path(__file__).resolve().parent
@@ -259,11 +261,16 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
 
             # Parsear body del POST robustamente
             form = read_post_body_and_parse(data, conn)
-            if form is None:
-                body = b"<html><body><h1>400 Bad Request</h1></body></html>"
+            if form == {}:
+                body = (
+                    b"<!DOCTYPE html><html><body>"
+                    b"<h1>400 Bad Request</h1><p>POST mal formado.</p>"
+                    b"</body></html>"
+                )
                 header = HTTP_400_TEMPLATE.format(length=len(body)).encode("ascii")
                 conn.sendall(header + body)
                 return
+
 
             username = form.get("username", "").strip()
             password = form.get("password", "")
@@ -282,26 +289,39 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
             try:
                 if authenticate(username, password, USERS):
                     logging.info("Login exitoso para '%s' desde %s", username, addr[0])
+
+                    # Intentar obtener MAC desde el gateway (arp)
+                    client_ip = addr[0]
                     try:
-                        sessions.crear_sesion(username, addr[0], ttl=SESSION_TTL)
-                        logging.info(
-                            "Sesion creada para %s (IP=%s, ttl=%s)",
-                            username,
-                            addr[0],
-                            SESSION_TTL,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logging.exception("No se pudo crear la sesión tras login: %s", exc)
+                        mac = arp_lookup.get_mac(client_ip)
+                        if mac:
+                            logging.info("MAC encontrada para %s : %s", client_ip, mac)
+                        else:
+                            logging.info("No se encontró MAC para %s; continuará solo con IP", client_ip)
+                    except Exception as exc:
+                        logging.warning("Error obteniendo MAC para %s: %s", client_ip, exc)
+                        mac = None
+
+                    # Crear sesión guardando IP y (si se obtuvo) MAC
+                    try:
+                        # usar sessions.crear_sesion (importarlo arriba)
+                        crear_sesion(username, client_ip, mac=mac)
+                    except Exception as exc:
+                        logging.exception("Error creando sesión para %s: %s", username, exc)
 
                     body = TEMPLATE_CACHE.get("/success") or "<h1>Autenticación exitosa</h1>".encode("utf-8")
+
+                    header = HTTP_OK_TEMPLATE.format(length=len(body))
+                    conn.sendall(header.encode("ascii") + body)
+                    return
+
                 else:
-                    logging.info("Login fallido para '%s' desde %s", username, addr[0])
-                    body = TEMPLATE_CACHE.get("/error") or "<h1>Acceso denegado</h1>".encode("utf-8")
-
-                header = HTTP_OK_TEMPLATE.format(length=len(body))
-                conn.sendall(header.encode("ascii") + body)
-                return
-
+                    body = TEMPLATE_CACHE.get("/error") or (
+                        b"<!DOCTYPE html><html><body><h1>Acceso denegado</h1></body></html>"
+                    )
+                    header = HTTP_OK_TEMPLATE.format(length=len(body))
+                    conn.sendall(header.encode("ascii") + body)
+                    return
             except Exception as exc:
                 logging.exception("Error validando credenciales: %s", exc)
                 body = (
