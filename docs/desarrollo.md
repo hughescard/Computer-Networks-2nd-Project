@@ -180,6 +180,26 @@ El servidor del portal está implementado en **Python** en `src/http_server.py` 
 
 ---
 
+### 7.1 Habilitar HTTPS (Issue #15)
+
+1. Genera un certificado autofirmado (ver `docs/https.md` para el comando `openssl` sugerido) y guárdalo, por ejemplo, en `config/tls/portal.crt` y `portal.key`.
+2. Abre el puerto TLS en el firewall exportando `PORTAL_HTTPS_PORT` antes de ejecutar `scripts/firewall_init.sh` (ejemplo `8443`).
+3. Arranca el portal con TLS:
+
+       sudo -E PORTAL_ENABLE_TLS=1 \
+              PORTAL_TLS_CERT=$PWD/config/tls/portal.crt \
+              PORTAL_TLS_KEY=$PWD/config/tls/portal.key \
+              PORTAL_HTTP_PORT=8443 \
+              PORTAL_LAN_IF=enp0s8 \
+              python3 src/http_server.py
+
+4. Accede con `https://` desde un cliente (si usas un certificado autofirmado, impórtalo en el navegador o usa `curl -k`).  
+   El resto del flujo (login, sesiones, reglas de firewall) se mantiene idéntico; solo cambia el transporte cifrado.
+
+Para más detalles (cifrados personalizados, verificación y consideraciones de red), consulta `docs/https.md`.
+
+---
+
 ## 8. Convención de mensajes de commit
 
 Se usa la siguiente convención para los mensajes de commit:

@@ -18,7 +18,8 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
+import ssl
 
 from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
@@ -36,6 +37,10 @@ PORT = int(os.getenv("PORTAL_HTTP_PORT", "8080"))
 MAX_WORKERS = int(os.getenv("PORTAL_HTTP_WORKERS", "16"))
 # Límite de bytes a leer de la petición (cabeceras + body) para evitar consumo desmedido
 MAX_REQUEST_BYTES = int(os.getenv("PORTAL_HTTP_MAX_REQUEST", "65536"))
+TLS_ENABLED = os.getenv("PORTAL_ENABLE_TLS", "0").strip().lower() in {"1", "true", "yes", "on"}
+TLS_CERT_FILE = os.getenv("PORTAL_TLS_CERT")
+TLS_KEY_FILE = os.getenv("PORTAL_TLS_KEY")
+TLS_CIPHERS = os.getenv("PORTAL_TLS_CIPHERS")
 
 # Directorios de plantillas
 BASE_DIR = Path(__file__).resolve().parent
@@ -101,6 +106,46 @@ HTTP_500_TEMPLATE = (
     "Connection: close\r\n"
     "\r\n"
 )
+
+
+def _build_tls_context() -> Optional[ssl.SSLContext]:
+    """
+    Configura un contexto TLS si PORTAL_ENABLE_TLS está activo.
+    Retorna None si TLS está deshabilitado.
+    """
+    if not TLS_ENABLED:
+        return None
+
+    if not TLS_CERT_FILE or not TLS_KEY_FILE:
+        logging.error(
+            "PORTAL_ENABLE_TLS=1 pero faltan PORTAL_TLS_CERT/PORTAL_TLS_KEY (cert=%s, key=%s)",
+            TLS_CERT_FILE,
+            TLS_KEY_FILE,
+        )
+        raise SystemExit(1)
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    try:
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+    except AttributeError:
+        # En versiones antiguas de Python/SSL no existe TLSVersion
+        pass
+    if hasattr(ssl, "OP_NO_COMPRESSION"):
+        context.options |= ssl.OP_NO_COMPRESSION
+    if TLS_CIPHERS:
+        try:
+            context.set_ciphers(TLS_CIPHERS)
+        except ssl.SSLError as exc:
+            logging.error("Lista de cifrados inválida en PORTAL_TLS_CIPHERS: %s", exc)
+            raise SystemExit(1) from exc
+
+    try:
+        context.load_cert_chain(certfile=TLS_CERT_FILE, keyfile=TLS_KEY_FILE)
+    except Exception as exc:
+        logging.error("No se pudo cargar el certificado/llave TLS: %s", exc)
+        raise SystemExit(1) from exc
+
+    return context
 
 
 def load_template(path: Path, fallback_message: str = "Plantilla no encontrada") -> bytes:
@@ -402,13 +447,23 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
 
     stop_event = threading.Event()
 
+    tls_context = _build_tls_context()
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_sock.bind((host, port))
         server_sock.listen(64)  # backlog decente para picos breves
         server_sock.settimeout(1.0)  # para permitir cerrar con Ctrl+C
 
-        logging.info("Servidor HTTP (socket) escuchando en %s:%d", host, port)
+        if tls_context:
+            logging.info(
+                "Servidor HTTPS escuchando en %s:%d (cert=%s)",
+                host,
+                port,
+                TLS_CERT_FILE,
+            )
+        else:
+            logging.info("Servidor HTTP escuchando en %s:%d", host, port)
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             try:
@@ -419,6 +474,15 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
                         continue
                     except OSError:
                         break  # socket cerrado
+                    if tls_context:
+                        try:
+                            conn = tls_context.wrap_socket(conn, server_side=True)
+                        except ssl.SSLError as exc:
+                            logging.warning(
+                                "Fallo handshake TLS con %s: %s", addr[0], exc
+                            )
+                            conn.close()
+                            continue
 
                     executor.submit(handle_client, conn, addr)
             except KeyboardInterrupt:
