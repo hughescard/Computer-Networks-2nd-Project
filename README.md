@@ -78,10 +78,10 @@ La estructura básica de directorios es:
 
    - El script incluye NAT (MASQUERADE) en la salida WAN para que DNS y la navegación funcionen desde la LAN.
 
-3) Arranca el servidor del portal (puerto por defecto `8080`, configurable con `PORTAL_HTTP_PORT`):
+3) Arranca el servidor del portal **como root** (se necesitan privilegios para insertar reglas iptables). Ajusta `PORTAL_LAN_IF` si tu interfaz LAN no es `enp0s8`:
 
    ```bash
-   PORTAL_HTTP_PORT=8080 python3 src/http_server.py
+   sudo -E PORTAL_LAN_IF=enp0s8 PORTAL_HTTP_PORT=8080 python3 src/http_server.py
    ```
 
 4) Desde un cliente con IP de la red interna (ej. `192.168.50.10/24`, gateway `192.168.50.1`):
@@ -93,7 +93,9 @@ La estructura básica de directorios es:
 - `docs/arquitectura.md`: módulos y flujo lógico del portal cautivo.
 - `docs/topologia.md`: IPs, máscaras, gateway y rutas del laboratorio.
 - `docs/firewall.md`: reglas base, redirección al portal y reglas dinámicas tras login.
-- `docs/desarrollo.md`: preparar entorno, ejecutar el servidor y convención de commits (`scripts/commit.sh`).
+- `docs/desarrollo.md`: preparar entorno, ejecutar el servidor (como root) y convención de commits (`scripts/commit.sh`).
+- `docs/pruebas_basicas.md`: escenarios ejecutados con múltiples clientes (issue #12).
+- `docs/antisuplantacion.md`: enfoque IP+MAC para reducir la suplantación (issue #16).
 
 ## Notas adicionales
 

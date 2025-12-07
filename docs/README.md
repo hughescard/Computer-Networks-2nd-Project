@@ -10,6 +10,7 @@ Algunos documentos que se crearán a lo largo del desarrollo:
 - `topologia.md`: topología de red del laboratorio (portal, clientes, IPs, máscaras, rutas).
 - `firewall.md`: reglas de firewall, scripts usados y explicación.
 - `desarrollo.md`: cómo preparar el entorno de desarrollo y ejecutar el sistema.
+- `pruebas_basicas.md`: escenarios funcionales ejecutados (Issue #12).
 - `logs.md`: formato y ubicación de los archivos de log.
 - `antisuplantacion.md`: enfoque para el control de suplantación de IP/MAC.
 - `checklist_requisitos.md`: relación entre requisitos del enunciado y su implementación.

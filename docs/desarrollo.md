@@ -165,15 +165,16 @@ El servidor del portal está implementado en **Python** en `src/http_server.py` 
 
        sudo bash scripts/firewall_init.sh   # requiere root
 
-3. Arranca el servidor:
+3. Arranca el servidor **como root** (se necesitan privilegios para modificar iptables). Ajusta `PORTAL_LAN_IF` si tu interfaz LAN no es `enp0s8`:
 
-       PORTAL_HTTP_PORT=8080 PORTAL_HTTP_WORKERS=16 python3 src/http_server.py
+       sudo -E PORTAL_LAN_IF=enp0s8 PORTAL_HTTP_PORT=8080 PORTAL_HTTP_WORKERS=16 python3 src/http_server.py
 
    Variables útiles:
    - `PORTAL_HTTP_HOST` (por defecto `0.0.0.0`)
    - `PORTAL_HTTP_PORT` (por defecto `8080`; el firewall redirige HTTP 80 hacia este puerto)
    - `PORTAL_HTTP_MAX_REQUEST` (límite de bytes a leer por petición)
    - `PORTAL_SESSION_TTL` (segundos de vigencia de cada sesión)
+   - `PORTAL_LAN_IF` (interfaz LAN que usará `firewall_dynamic.py` para las reglas per-cliente; coincide con `LAN_IF` del script de firewall)
 
 4. Desde un cliente de la LAN, abre cualquier URL `http://` y deberías ser redirigido al portal (issue #13). Tras login exitoso, el módulo `sessions` crea la sesión y `firewall_dynamic.py` inserta reglas para permitir la navegación real.
 
