@@ -50,6 +50,7 @@ LOGIN_TEMPLATE = TEMPLATES_DIR / "login.html"
 LOGIN_SUCCESS_TEMPLATE = TEMPLATES_DIR / "login_success.html"
 LOGIN_ERROR_TEMPLATE = TEMPLATES_DIR / "login_error.html"
 
+
 # Mapeo ruta -> Path de plantilla (permitlist)
 TEMPLATE_ROUTE_MAP = {
     "/": INDEX_TEMPLATE,
@@ -58,6 +59,12 @@ TEMPLATE_ROUTE_MAP = {
     "/success": LOGIN_SUCCESS_TEMPLATE,
     "/error": LOGIN_ERROR_TEMPLATE,
 }
+
+# RUTAS PARA EL LOGGING
+REPO_ROOT = BASE_DIR.parent
+LOGS_DIR = REPO_ROOT / "logs" # La carpeta 'logs' estará un nivel arriba de 'src'
+LOG_FILE = LOGS_DIR / "portal_captivo.log"
+
 
 # Cache en memoria de plantillas cargadas (route -> bytes)
 TEMPLATE_CACHE: dict[str, bytes] = {}
@@ -361,12 +368,16 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
                     return
 
                 else:
+                    # --- LOGGING DE LOGIN FALLIDO AÑADIDO ---
+                    logging.warning(
+                        "Login FALLIDO para '%s' desde %s", username, addr[0]
+                    )
+                    # --------------------------------------
                     body = TEMPLATE_CACHE.get("/error") or (
                         b"<!DOCTYPE html><html><body><h1>Acceso denegado</h1></body></html>"
                     )
                     header = HTTP_OK_TEMPLATE.format(length=len(body))
                     conn.sendall(header.encode("ascii") + body)
-                    return
             except Exception as exc:
                 logging.exception("Error validando credenciales: %s", exc)
                 body = (
@@ -494,8 +505,22 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
 
 
 if __name__ == "__main__":
+    # --- Configuración del Logging a Archivo ---
+    LOGS_DIR.mkdir(exist_ok=True)
+    
+    # 1. Crear el formato deseado
+    log_format = "%(asctime)s [%(levelname)s] %(message)s"
+
+    # 2. Configurar el logging para enviar a archivo y consola
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
+        format=log_format,
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding="utf-8"), # Escribe al archivo
+            logging.StreamHandler(), # Escribe a la consola (sys.stderr)
+        ]
     )
+    logging.info("Sistema de logging configurado. Guardando en: %s", LOG_FILE)
+    # ------------------------------------------
+
     run_server()
