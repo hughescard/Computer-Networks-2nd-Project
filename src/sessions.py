@@ -337,9 +337,20 @@ def obtener_todas_las_sesiones() -> Dict[SessionKey, Session]:
     """
     with _lock:
         return dict(_sessions)
+    
+def is_authenticated(ip: str, mac: Optional[str] = None) -> bool:
+    """
+    Devuelve True si la IP (y opcionalmente la MAC) tiene una sesión activa.
+
+    Utiliza obtener_sesion, lo que garantiza que las sesiones expiradas
+    se limpien automáticamente.
+    """
+    return obtener_sesion(ip, mac) is not None
 
 # Restauramos sesiones (si existen en disco) al importar el módulo
 _load_from_disk()
+
+
 
 if __name__ == "__main__":
     # Restaura sesiones previas antes de iniciar pruebas manuales
@@ -363,3 +374,5 @@ if __name__ == "__main__":
     time.sleep(6)
     s3 = obtener_sesion("10.0.2.15", mac="aa:bb:cc:dd:ee:ff")
     print("Después de la expiración, obtener_sesion ->", s3)
+
+

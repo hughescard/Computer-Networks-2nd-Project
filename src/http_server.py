@@ -25,7 +25,7 @@ from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
 
 
-from sessions import crear_sesion  # o import sessions
+from sessions import crear_sesion, is_authenticated  # o import sessions
 import arp_lookup
 
 
@@ -103,6 +103,15 @@ HTTP_500_TEMPLATE = (
     "HTTP/1.1 500 Internal Server Error\r\n"
     "Content-Type: text/html; charset=utf-8\r\n"
     "Content-Length: {length}\r\n"
+    "Connection: close\r\n"
+    "\r\n"
+)
+
+# Plantilla para la redirección (para clientes no autenticados)
+HTTP_302_REDIRECT_TEMPLATE = (
+    "HTTP/1.1 302 Found\r\n"
+    "Location: {location}\r\n" # Aquí se coloca la URL de destino
+    "Content-Length: 0\r\n"
     "Connection: close\r\n"
     "\r\n"
 )
@@ -283,6 +292,26 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
 
         # Soporte para GET y POST
         method_upper = method.upper()
+
+        client_ip = addr[0]
+        route = path.split("?", 1)[0].split("#", 1)[0]
+        
+        # Las rutas /login, /error, /success son rutas de servicio y no requieren autenticación.
+        # El resto de rutas SÍ requieren autenticación.
+
+        if route not in {"/login", "/error", "/success"}:
+            if not is_authenticated(client_ip):
+                
+                logging.info("Cliente no autenticado (%s) intentó acceder a %s. Redirigiendo a /login", client_ip, route)
+                
+                # 1. Crear cabecera de redirección 302
+                header = HTTP_302_REDIRECT_TEMPLATE.format(location="/login")
+                
+                # 2. Enviar la cabecera y terminar la conexión
+                conn.sendall(header.encode("ascii"))
+                return
+
+    # Si llega aquí, o está autenticado, o está solicitando una ruta de servicio.
 
         if method_upper == "GET":
             # GET: continuamos al flujo que sirve plantillas por route más abajo.
