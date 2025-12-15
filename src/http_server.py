@@ -25,7 +25,7 @@ from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
 
 
-from sessions import crear_sesion  # o import sessions
+from sessions import crear_sesion, eliminar_sesion  # o import sessions
 import arp_lookup
 
 
@@ -49,6 +49,7 @@ INDEX_TEMPLATE = TEMPLATES_DIR / "index.html"
 LOGIN_TEMPLATE = TEMPLATES_DIR / "login.html"
 LOGIN_SUCCESS_TEMPLATE = TEMPLATES_DIR / "login_success.html"
 LOGIN_ERROR_TEMPLATE = TEMPLATES_DIR / "login_error.html"
+LOGOUT_TEMPLATE = TEMPLATES_DIR / "logout.html"
 
 
 # Mapeo ruta -> Path de plantilla (permitlist)
@@ -58,6 +59,7 @@ TEMPLATE_ROUTE_MAP = {
     "/login": LOGIN_TEMPLATE,
     "/success": LOGIN_SUCCESS_TEMPLATE,
     "/error": LOGIN_ERROR_TEMPLATE,
+    "/logout": LOGOUT_TEMPLATE,
 }
 
 # RUTAS PARA EL LOGGING
@@ -155,6 +157,22 @@ def _build_tls_context() -> Optional[ssl.SSLContext]:
     return context
 
 
+def _lookup_mac_for_ip(ip: str) -> Optional[str]:
+    """
+    Devuelve la MAC asociada a la IP consultando la tabla ARP.
+    """
+    try:
+        mac = arp_lookup.get_mac(ip)
+        if mac:
+            logging.info("MAC encontrada para %s : %s", ip, mac)
+        else:
+            logging.info("No se encontró MAC para %s; continuará solo con IP", ip)
+        return mac
+    except Exception as exc:
+        logging.warning("Error obteniendo MAC para %s: %s", ip, exc)
+        return None
+
+
 def load_template(path: Path, fallback_message: str = "Plantilla no encontrada") -> bytes:
     """
     Lee y devuelve el contenido en bytes de la plantilla indicada.
@@ -245,6 +263,29 @@ def read_post_body_and_parse(initial_data: bytes, conn: socket.socket) -> dict:
         return {}
 
 
+def _logout_client(client_ip: str) -> bool:
+    """
+    Intenta eliminar la sesión asociada a la IP (y MAC si se puede resolver).
+    Devuelve True si se eliminó alguna sesión.
+    """
+    mac = _lookup_mac_for_ip(client_ip)
+
+    removed = False
+    if mac:
+        removed = eliminar_sesion(client_ip, mac)
+        if not removed:
+            # Intentar caída a solo IP en caso de que la MAC no esté presente en la sesión
+            removed = eliminar_sesion(client_ip, None)
+    else:
+        removed = eliminar_sesion(client_ip, None)
+
+    if removed:
+        logging.info("Sesión cerrada para %s", client_ip)
+    else:
+        logging.info("No se encontró sesión activa para %s al intentar logout", client_ip)
+    return removed
+
+
 def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
     """
     Maneja una conexión TCP con un cliente.
@@ -288,30 +329,56 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
 
         logging.info("Peticion %s %s desde %s", method, path, addr[0])
 
+        # Normalizar la ruta sin query/fragmento
+        route = path.split("?", 1)[0].split("#", 1)[0]
+
+        # Rechazar intentos evidentes de path-traversal o percent-encoding peligroso
+        if ".." in route or "%" in route:
+            logging.warning("Intento de ruta inválida desde %s: %s", addr[0], path)
+            body = (
+                b"<!DOCTYPE html><html><body>"
+                b"<h1>404 Not Found</h1><p>Ruta no encontrada.</p>"
+                b"</body></html>"
+            )
+            header = HTTP_404_TEMPLATE.format(length=len(body)).encode("ascii")
+            conn.sendall(header + body)
+            return
+
         # Soporte para GET y POST
         method_upper = method.upper()
 
         if method_upper == "GET":
-            # GET: continuamos al flujo que sirve plantillas por route más abajo.
+            # GET: continuamos al flujo que sirve plantillas por route más abajo
+            # salvo rutas especiales como /logout (se manejan antes de servir plantilla).
             pass
 
         elif method_upper == "POST":
-            # Normalizar ruta (sin query ni fragment)
-            route = path.split("?", 1)[0].split("#", 1)[0]
-
-            # Solo permitimos POST en /login
-            if route != "/login":
+            # Solo permitimos POST en /login o /logout
+            if route not in {"/login", "/logout"}:
+                allow = "GET"
+                if route == "/login":
+                    allow = "GET, POST"
                 body = (
                     b"<!DOCTYPE html><html><body>"
                     b"<h1>405 Method Not Allowed</h1>"
                     b"<p>POST no permitido en esta ruta.</p>"
                     b"</body></html>"
                 )
-                header = HTTP_405_TEMPLATE.format(length=len(body), allow="GET")
+                header = HTTP_405_TEMPLATE.format(length=len(body), allow=allow)
                 conn.sendall(header.encode("ascii") + body)
                 return
 
-            # Parsear body del POST robustamente
+            # Manejo específico para logout via POST: no requiere body.
+            if route == "/logout":
+                _logout_client(addr[0])
+                body = TEMPLATE_CACHE.get("/logout") or (
+                    b"<!DOCTYPE html><html><body><h1>Sesion finalizada</h1></body></html>"
+                )
+                header = HTTP_OK_TEMPLATE.format(length=len(body)).encode("ascii")
+                conn.sendall(header + body)
+                return
+
+            # Parsear body del POST robustamente (solo /login)
             form = read_post_body_and_parse(data, conn)
             if form == {}:
                 body = (
@@ -344,15 +411,7 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
 
                     # Intentar obtener MAC desde el gateway (arp)
                     client_ip = addr[0]
-                    try:
-                        mac = arp_lookup.get_mac(client_ip)
-                        if mac:
-                            logging.info("MAC encontrada para %s : %s", client_ip, mac)
-                        else:
-                            logging.info("No se encontró MAC para %s; continuará solo con IP", client_ip)
-                    except Exception as exc:
-                        logging.warning("Error obteniendo MAC para %s: %s", client_ip, exc)
-                        mac = None
+                    mac = _lookup_mac_for_ip(client_ip)
 
                     # Crear sesión guardando IP y (si se obtuvo) MAC
                     try:
@@ -391,7 +450,7 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
 
         else:
             # Método no permitido. Si la ruta es /login, permitir GET,POST; si no, solo GET.
-            allow = "GET, POST" if path.split("?", 1)[0].split("#", 1)[0] == "/login" else "GET"
+            allow = "GET, POST" if route == "/login" else "GET"
             body = (
                 "<!DOCTYPE html><html><body>"
                 "<h1>405 Method Not Allowed</h1>"
@@ -402,18 +461,13 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
             conn.sendall(header.encode("ascii") + body)
             return
 
-        # Normalizar la ruta: quitar query string y fragmento
-        route = path.split("?", 1)[0].split("#", 1)[0]
-
-        # Rechazar intentos evidentes de path-traversal o percent-encoding peligroso
-        if ".." in route or "%" in route:
-            logging.warning("Intento de ruta inválida desde %s: %s", addr[0], path)
-            body = (
-                b"<!DOCTYPE html><html><body>"
-                b"<h1>404 Not Found</h1><p>Ruta no encontrada.</p>"
-                b"</body></html>"
+        # Manejo de logout (GET o POST)
+        if route == "/logout":
+            _logout_client(addr[0])
+            body = TEMPLATE_CACHE.get("/logout") or (
+                b"<!DOCTYPE html><html><body><h1>Sesion finalizada</h1></body></html>"
             )
-            header = HTTP_404_TEMPLATE.format(length=len(body)).encode("ascii")
+            header = HTTP_OK_TEMPLATE.format(length=len(body)).encode("ascii")
             conn.sendall(header + body)
             return
 
