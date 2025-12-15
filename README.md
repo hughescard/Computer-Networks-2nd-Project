@@ -22,14 +22,14 @@ El portal cautivo debe:
 - Gestionar un **mecanismo de cuentas de usuario** (definición y validación).
 - Soportar el manejo de **múltiples usuarios concurrentes** (procesos y/o hilos).
 
-Además, se buscará implementar varios **extras**:
+## Extras implementados
 
-- Detección automática del portal cautivo.
-- Capa de seguridad **HTTPS** sobre la URL del portal.
-- Medidas contra la **suplantación de IP** de usuarios autenticados.
-- **Enmascaramiento (NAT)** de la red interna.
-- Buen diseño y experiencia de usuario en la página del portal.
-- Cualquier otra mejora creativa que aporte valor.
+- Redirección automática de HTTP (80/tcp) hacia el portal con bypass tras login.
+- **NAT/MASQUERADE** en la salida WAN para que los clientes naveguen usando la IP del gateway.
+- Portal disponible también por **HTTPS** usando solo la stdlib (`ssl`).
+- Reglas dinámicas **IP + MAC** para mitigar suplantación de identidad (cuando la MAC está disponible en ARP).
+- Plantillas HTML mejoradas (login, éxito y error) con mensajes claros para el usuario final.
+- Sistema de **logs** con trazabilidad de logins, creación/eliminación de sesiones y cambios en el firewall.
 
 ---
 
@@ -59,6 +59,7 @@ La estructura básica de directorios es:
 
 - Usuarios de ejemplo en `config/usuarios.txt` (formato `usuario:contraseña`).
 - Sesiones en memoria con persistencia a `config/sessions.json`; el módulo `src/sessions.py` restaura sesiones activas al iniciar (descarta las expiradas) y guarda en disco en cada alta/baja/limpieza.
+- TTL configurable vía `PORTAL_SESSION_TTL` (por defecto 3600 s; valores ≤ 0 generan sesiones sin expiración).
 
 ## Scripts de firewall (gateway)
 
@@ -67,26 +68,42 @@ La estructura básica de directorios es:
 - Ajusta `WAN_IF` y `LAN_IF` en `scripts/firewall_init.sh` según los nombres de interfaz del gateway.
 - Para cargar reglas al arranque instala `iptables-persistent` (Debian/Ubuntu: `sudo apt-get install iptables-persistent`).
 
+## Despliegue paso a paso (Issue #19)
+
+1) **Prerrequisitos (gateway):** Linux, `python3`, `iptables`, `sudo`, `openssl` (para HTTPS). Ejecuta `./scripts/dev_env.sh` para verificar/habilitar lo básico.
+2) **Clona el repositorio** en la máquina gateway y sitúate en la raíz del proyecto.
+3) **Configura la red** según `docs/topologia.md`: interfaz LAN con `192.168.50.1/24` (ej. `enp0s8`) y WAN con salida a Internet/DHCP (`enp0s3`).
+4) **Alta de usuarios:** edita `config/usuarios.txt` con el formato `usuario:contraseña`.
+5) **Aplica el firewall base** (abre el puerto del portal, bloquea forwarding y habilita redirección + NAT):
+
+   ```bash
+   sudo PORTAL_HTTP_PORT=8080 PORTAL_LAN_IF=enp0s8 bash scripts/firewall_init.sh
+   ```
+
+   - Ajusta `WAN_IF`/`LAN_IF` dentro del script si tus interfaces tienen otros nombres.
+   - El script añade `MASQUERADE` en la salida para que DNS/navegación funcionen desde la LAN tras autenticación.
+
+6) **Arranca el portal cautivo** (requiere root para modificar iptables). Variables útiles:
+
+   ```bash
+   sudo -E PORTAL_LAN_IF=enp0s8 \
+          PORTAL_HTTP_PORT=8080 \
+          PORTAL_SESSION_TTL=3600 \
+          python3 src/http_server.py
+   ```
+
+   - Activa HTTPS exportando además `PORTAL_ENABLE_TLS=1`, `PORTAL_TLS_CERT`, `PORTAL_TLS_KEY` y, si usas un puerto dedicado, `PORTAL_HTTPS_PORT` antes de ejecutar `firewall_init.sh`.
+
+7) **Validación rápida:** desde un cliente en la LAN abre cualquier `http://` → debe aparecer el portal. Inicia sesión con un usuario válido → se carga `login_success.html` y la navegación hacia Internet queda habilitada para esa IP/MAC.
+8) **Parada y limpieza:** detén el servidor con `Ctrl+C` y, si deseas, deja el firewall en modo abierto para depuración con `sudo bash scripts/firewall_clear.sh`.
+
 ## Arranque rápido (laboratorio)
 
-1) Configura la topología descrita en `docs/topologia.md` (gateway con dos interfaces: WAN `enp0s3`, LAN `enp0s8` con `192.168.50.1/24`).
-2) En el gateway, aplica el firewall base y la redirección del portal:
-
-   ```bash
-   sudo bash scripts/firewall_init.sh
-   ```
-
-   - El script incluye NAT (MASQUERADE) en la salida WAN para que DNS y la navegación funcionen desde la LAN.
-
-3) Arranca el servidor del portal **como root** (se necesitan privilegios para insertar reglas iptables). Ajusta `PORTAL_LAN_IF` si tu interfaz LAN no es `enp0s8`:
-
-   ```bash
-   sudo -E PORTAL_LAN_IF=enp0s8 PORTAL_HTTP_PORT=8080 python3 src/http_server.py
-   ```
-
-4) Desde un cliente con IP de la red interna (ej. `192.168.50.10/24`, gateway `192.168.50.1`):
-   - Cualquier `http://` que abras será redirigido al portal (issue #13).
-   - Tras login correcto, `src/sessions.py` añade reglas dinámicas con `firewall_dynamic.py` para permitir la navegación real (issue #10 + #13).
+- En el gateway: `sudo bash scripts/firewall_init.sh`.
+- Portal: `sudo -E PORTAL_LAN_IF=enp0s8 PORTAL_HTTP_PORT=8080 python3 src/http_server.py`.
+- Cliente LAN (ej. `192.168.50.10/24`, gateway `192.168.50.1`):
+  - Antes de login → siempre se muestra el portal al abrir HTTP.
+  - Después de login → navegación real habilitada (reglas dinámicas en `iptables`).
 
 ## Documentación clave
 

@@ -18,6 +18,7 @@ cuando un usuario hace login correctamente.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -58,8 +59,18 @@ _sessions: Dict[SessionKey, Session] = {}
 _lock = threading.Lock()
 
 # Tiempo por defecto de duración de una sesión (en segundos).
-# Puedes ajustar este valor según las necesidades del laboratorio.
+# Se puede ajustar con la variable de entorno PORTAL_SESSION_TTL.
 DEFAULT_SESSION_TTL = 60 * 60  # 1 hora
+_env_ttl = os.getenv("PORTAL_SESSION_TTL")
+if _env_ttl:
+    try:
+        DEFAULT_SESSION_TTL = int(_env_ttl)
+    except ValueError:
+        logging.warning(
+            "PORTAL_SESSION_TTL inválido (%s); usando valor por defecto %s",
+            _env_ttl,
+            DEFAULT_SESSION_TTL,
+        )
 
 # Ruta para persistir sesiones en disco
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Sesión cerrada</title>
+    <style>
+        :root {
+            --primary: #0f62ff;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --muted: #5f6b7f;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            background: radial-gradient(circle at 20% 20%, #e6f0ff, #f8fbff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px;
+            color: var(--text);
+        }
+        .card {
+            width: min(460px, 100%);
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+            box-shadow: 0 16px 48px rgba(15, 98, 255, 0.18);
+        }
+        .status-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: rgba(15, 98, 255, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            font-size: 40px;
+            font-weight: bold;
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 1.75rem;
+        }
+        p {
+            margin: 0 0 20px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+        .actions a {
+            display: inline-block;
+            text-decoration: none;
+            padding: 12px 28px;
+            border-radius: 999px;
+            font-weight: 600;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            background: var(--primary);
+            color: var(--surface);
+        }
+        .actions a:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="status-icon">✕</div>
+        <h1>Sesión cerrada</h1>
+        <p>Tu sesión se cerró correctamente y el acceso a Internet ha sido revocado para este dispositivo.</p>
+        <div class="actions">
+            <a href="/login">Volver a iniciar sesión</a>
+        </div>
+    </div>
+</body>
+</html>

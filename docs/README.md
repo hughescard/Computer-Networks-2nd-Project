@@ -6,7 +6,7 @@ Este proyecto implementa un Portal Cautivo (Captive Portal) utilizando únicamen
 
 ### ✔️ Características implementadas
 
-- Servidor HTTP/HTTPS concurrente (basado en `socketserver` y `ssl`).
+- Servidor HTTP/HTTPS concurrente basado en sockets + `ssl`.
 - Módulo de autenticación basado en archivo (`config/usuarios.txt`).
 - Gestión de sesiones con persistencia en `sessions.json`.
 - Firewall dinámico con `iptables` para autorizar IP/MAC tras login.

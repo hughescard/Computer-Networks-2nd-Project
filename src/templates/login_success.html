@@ -55,6 +55,10 @@
         }
         .actions {
             margin-bottom: 24px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
         }
         .actions a {
             display: inline-block;
@@ -68,6 +72,10 @@
         }
         .actions a:hover {
             opacity: 0.85;
+        }
+        .actions a.secondary {
+            background: #e5f3ff;
+            color: var(--primary);
         }
         .tips {
             text-align: left;
@@ -106,13 +114,14 @@
 
         <div class="actions">
             <a href="/" target="_blank" rel="noopener">Abrir página del portal</a>
+            <a class="secondary" href="/logout">Cerrar sesión</a>
         </div>
 
         <div class="tips">
             <h2>Información útil</h2>
             <ul>
                 <li>Abre una nueva pestaña y visita cualquier sitio para comprobar que tienes Internet. Esta ventana se puede cerrar después.</li>
-                <li><strong>Para cerrar sesión</strong> desconecta el equipo de la red o comunícate con el administrador para revocar la sesión activa.</li>
+                <li>Usa el botón <strong>Cerrar sesión</strong> si ya no necesitas acceso desde este dispositivo.</li>
                 <li>Si detectas que pierdes Internet, vuelve a <a href="/login">/login</a> para iniciar sesión nuevamente.</li>
             </ul>
         </div>
