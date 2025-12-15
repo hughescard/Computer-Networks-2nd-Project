@@ -9,6 +9,8 @@ En este directorio se guardan **archivos de configuración** del portal cautivo.
 - Archivos de configuración de red o del portal, por ejemplo:
   - IPs/puertos de escucha.
   - Parámetros de sesión (tiempos de expiración, etc.).
+- Material TLS para el portal HTTPS (Issue #15):
+  - Certificados y claves generados para laboratorio (`config/tls/portal.crt`, `portal.key`, etc.).
 - Estado persistente generado en runtime:
   - `sessions.json` (se crea automáticamente con las sesiones activas).
 - Variables de entorno o plantillas de configuración:

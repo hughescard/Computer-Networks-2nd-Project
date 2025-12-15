@@ -188,6 +188,16 @@ flowchart LR
 
 ---
 
+## Criterios de aceptación del Issue #2
+
+- Documento creado: `docs/arquitectura.md` (este archivo).
+- Módulos y responsabilidades descritos: HTTP, autenticación, sesiones, firewall/red, plantillas y logs.
+- Diagrama lógico de red incluido (cliente ↔ portal ↔ Internet).
+- Ubicación de extras explicada: HTTPS, NAT, detección de portal, anti-suplantación.
+- Consideraciones de concurrencia y seguridad enumeradas para guiar implementación.
+
+---
+
 
 ## Tareas futuras / TODOs
 
@@ -205,5 +215,4 @@ flowchart LR
 - Para diagramas complejos, añadir imágenes o plantillas en `docs/assets/`.
 
 ---
-
 

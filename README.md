@@ -59,6 +59,7 @@ La estructura básica de directorios es:
 
 - Usuarios de ejemplo en `config/usuarios.txt` (formato `usuario:contraseña`).
 - Sesiones en memoria con persistencia a `config/sessions.json`; el módulo `src/sessions.py` restaura sesiones activas al iniciar (descarta las expiradas) y guarda en disco en cada alta/baja/limpieza.
+
 ## Scripts de firewall (gateway)
 
 - Ejecutar como root: `sudo bash scripts/firewall_init.sh` (aplica la política base, verifica `nf_conntrack`, habilita forwarding y guarda reglas con `iptables-save` en `/etc/iptables/rules.v4` si está disponible).
@@ -66,10 +67,39 @@ La estructura básica de directorios es:
 - Ajusta `WAN_IF` y `LAN_IF` en `scripts/firewall_init.sh` según los nombres de interfaz del gateway.
 - Para cargar reglas al arranque instala `iptables-persistent` (Debian/Ubuntu: `sudo apt-get install iptables-persistent`).
 
+## Arranque rápido (laboratorio)
+
+1) Configura la topología descrita en `docs/topologia.md` (gateway con dos interfaces: WAN `enp0s3`, LAN `enp0s8` con `192.168.50.1/24`).
+2) En el gateway, aplica el firewall base y la redirección del portal:
+
+   ```bash
+   sudo bash scripts/firewall_init.sh
+   ```
+
+   - El script incluye NAT (MASQUERADE) en la salida WAN para que DNS y la navegación funcionen desde la LAN.
+
+3) Arranca el servidor del portal **como root** (se necesitan privilegios para insertar reglas iptables). Ajusta `PORTAL_LAN_IF` si tu interfaz LAN no es `enp0s8`:
+
+   ```bash
+   sudo -E PORTAL_LAN_IF=enp0s8 PORTAL_HTTP_PORT=8080 python3 src/http_server.py
+   ```
+
+4) Desde un cliente con IP de la red interna (ej. `192.168.50.10/24`, gateway `192.168.50.1`):
+   - Cualquier `http://` que abras será redirigido al portal (issue #13).
+   - Tras login correcto, `src/sessions.py` añade reglas dinámicas con `firewall_dynamic.py` para permitir la navegación real (issue #10 + #13).
+
 ## Documentación clave
 
-- `docs/topologia.md`: IPs, máscaras, gateway y rutas del laboratorio.
-- `docs/firewall.md`: reglas base, redirección al portal y notas de NAT.
 - `docs/arquitectura.md`: módulos y flujo lógico del portal cautivo.
-- `docs/desarrollo.md`: preparar entorno, ejecutar el servidor y convención de commits.
-- `docs/pruebas_basicas.md`: escenarios y guía de ejecución para el issue #12; usa `tests/pruebas_basicas.sh`.
+- `docs/topologia.md`: IPs, máscaras, gateway y rutas del laboratorio.
+- `docs/firewall.md`: reglas base, redirección al portal y reglas dinámicas tras login.
+- `docs/desarrollo.md`: preparar entorno, ejecutar el servidor (como root) y convención de commits (`scripts/commit.sh`).
+- `docs/pruebas_basicas.md`: escenarios ejecutados con múltiples clientes (issue #12).
+- `docs/antisuplantacion.md`: enfoque IP+MAC para reducir la suplantación (issue #16).
+- `docs/https.md`: generación de certificados y activación de HTTPS con la stdlib (issue #15).
+
+## Notas adicionales
+
+- El proyecto usa únicamente la biblioteca estándar de Python.
+- Plantillas HTML en `src/templates/` (`login`, `success`, `error`).
+- Concurrencia: `ThreadPoolExecutor` en `src/http_server.py` (issue #11).

@@ -46,7 +46,7 @@ Para detalles de diseño y red, ver:
 1. Clonar el repositorio y crear una rama para la issue.
 2. Ejecutar el script de entorno de desarrollo.
 3. Configurar entorno de laboratorio (IP forwarding + firewall base).
-4. Levantar el servidor del portal cautivo (cuando esté implementado).
+4. Levantar el servidor del portal cautivo (`src/http_server.py`).
 5. Hacer cambios en código / docs.
 6. Confirmar cambios con el script de commits.
 7. Abrir un Pull Request hacia `main` mencionando la issue.
@@ -155,27 +155,48 @@ Los detalles completos de las reglas están en `docs/firewall.md`. Este document
 
 ## 7. Ejecutar el servidor del portal cautivo (Python)
 
-El servidor del portal cautivo estará implementado en **Python** dentro del directorio `src/`.
-
-Por ahora se asume que existirá un **punto de entrada** claro (por ejemplo, `src/main.py` o un módulo equivalente). Cuando esa parte del proyecto esté implementada, esta sección debe actualizarse con el comando definitivo.
-
-Mientras tanto, el flujo esperado será algo de este estilo:
+El servidor del portal está implementado en **Python** en `src/http_server.py` y solo usa la stdlib (sockets + ThreadPoolExecutor).
 
 1. (Opcional) Activar el entorno virtual creado por `dev_env.sh`:
 
        source .venv/bin/activate
 
-2. Ejecutar el script principal del servidor:
+2. (Gateway) Asegúrate de que el firewall base está aplicado:
 
-       python3 src/main.py   # nombre de archivo a ajustar cuando exista
+       sudo bash scripts/firewall_init.sh   # requiere root
 
-Este servidor debería:
+3. Arranca el servidor **como root** (se necesitan privilegios para modificar iptables). Ajusta `PORTAL_LAN_IF` si tu interfaz LAN no es `enp0s8`:
 
-- Escuchar en el puerto configurado (por ejemplo 80, 8080 o 443 para HTTPS).
-- Servir la página de login del portal cautivo.
-- Integrarse con las reglas de firewall para controlar el acceso a la red.
+       sudo -E PORTAL_LAN_IF=enp0s8 PORTAL_HTTP_PORT=8080 PORTAL_HTTP_WORKERS=16 python3 src/http_server.py
 
-> **TODO**: actualizar esta sección cuando se defina la estructura final del código Python (nombre del módulo de entrada, argumentos, logging, etc.).
+   Variables útiles:
+   - `PORTAL_HTTP_HOST` (por defecto `0.0.0.0`)
+   - `PORTAL_HTTP_PORT` (por defecto `8080`; el firewall redirige HTTP 80 hacia este puerto)
+   - `PORTAL_HTTP_MAX_REQUEST` (límite de bytes a leer por petición)
+   - `PORTAL_SESSION_TTL` (segundos de vigencia de cada sesión)
+   - `PORTAL_LAN_IF` (interfaz LAN que usará `firewall_dynamic.py` para las reglas per-cliente; coincide con `LAN_IF` del script de firewall)
+
+4. Desde un cliente de la LAN, abre cualquier URL `http://` y deberías ser redirigido al portal (issue #13). Tras login exitoso, el módulo `sessions` crea la sesión y `firewall_dynamic.py` inserta reglas para permitir la navegación real.
+
+---
+
+### 7.1 Habilitar HTTPS (Issue #15)
+
+1. Genera un certificado autofirmado (ver `docs/https.md` para el comando `openssl` sugerido) y guárdalo, por ejemplo, en `config/tls/portal.crt` y `portal.key`.
+2. Abre el puerto TLS en el firewall exportando `PORTAL_HTTPS_PORT` antes de ejecutar `scripts/firewall_init.sh` (ejemplo `8443`).
+3. Arranca el portal con TLS:
+
+       sudo -E PORTAL_ENABLE_TLS=1 \
+              PORTAL_TLS_CERT=$PWD/config/tls/portal.crt \
+              PORTAL_TLS_KEY=$PWD/config/tls/portal.key \
+              PORTAL_HTTP_PORT=8443 \
+              PORTAL_LAN_IF=enp0s8 \
+              python3 src/http_server.py
+
+4. Accede con `https://` desde un cliente (si usas un certificado autofirmado, impórtalo en el navegador o usa `curl -k`).  
+   El resto del flujo (login, sesiones, reglas de firewall) se mantiene idéntico; solo cambia el transporte cifrado.
+
+Para más detalles (cifrados personalizados, verificación y consideraciones de red), consulta `docs/https.md`.
 
 ---
 
@@ -236,3 +257,12 @@ El script:
 Este script implementa la **herramienta de convención de commits** requerida por la Issue #21.
 
 ---
+
+## 10. Checklist rápido (Issue #21)
+
+- [ ] Clonaste el repo y creaste una rama por issue (`git checkout -b feature/issue-XX-...`).
+- [ ] Ejecutaste `./scripts/dev_env.sh` y tienes `python3` + herramientas de red disponibles.
+- [ ] Configuraste la topología del laboratorio (`docs/topologia.md`) y aplicaste `scripts/firewall_init.sh`.
+- [ ] Arrancaste el servidor del portal con `python3 src/http_server.py` y confirmaste que responde en el puerto configurado.
+- [ ] Probaste la redirección HTTP y el login básico (issue #13 + #8).
+- [ ] Usaste `./scripts/commit.sh` para generar el mensaje de commit siguiendo la convención.

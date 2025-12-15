@@ -18,10 +18,16 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
+import ssl
 
 from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
+
+
+from sessions import crear_sesion  # o import sessions
+import arp_lookup
+
 
 
 # Host y puerto del servidor HTTP (configurables por variables de entorno)
@@ -31,6 +37,10 @@ PORT = int(os.getenv("PORTAL_HTTP_PORT", "8080"))
 MAX_WORKERS = int(os.getenv("PORTAL_HTTP_WORKERS", "16"))
 # Límite de bytes a leer de la petición (cabeceras + body) para evitar consumo desmedido
 MAX_REQUEST_BYTES = int(os.getenv("PORTAL_HTTP_MAX_REQUEST", "65536"))
+TLS_ENABLED = os.getenv("PORTAL_ENABLE_TLS", "0").strip().lower() in {"1", "true", "yes", "on"}
+TLS_CERT_FILE = os.getenv("PORTAL_TLS_CERT")
+TLS_KEY_FILE = os.getenv("PORTAL_TLS_KEY")
+TLS_CIPHERS = os.getenv("PORTAL_TLS_CIPHERS")
 
 # Directorios de plantillas
 BASE_DIR = Path(__file__).resolve().parent
@@ -40,6 +50,7 @@ LOGIN_TEMPLATE = TEMPLATES_DIR / "login.html"
 LOGIN_SUCCESS_TEMPLATE = TEMPLATES_DIR / "login_success.html"
 LOGIN_ERROR_TEMPLATE = TEMPLATES_DIR / "login_error.html"
 
+
 # Mapeo ruta -> Path de plantilla (permitlist)
 TEMPLATE_ROUTE_MAP = {
     "/": INDEX_TEMPLATE,
@@ -48,6 +59,12 @@ TEMPLATE_ROUTE_MAP = {
     "/success": LOGIN_SUCCESS_TEMPLATE,
     "/error": LOGIN_ERROR_TEMPLATE,
 }
+
+# RUTAS PARA EL LOGGING
+REPO_ROOT = BASE_DIR.parent
+LOGS_DIR = REPO_ROOT / "logs" # La carpeta 'logs' estará un nivel arriba de 'src'
+LOG_FILE = LOGS_DIR / "portal_captivo.log"
+
 
 # Cache en memoria de plantillas cargadas (route -> bytes)
 TEMPLATE_CACHE: dict[str, bytes] = {}
@@ -96,6 +113,46 @@ HTTP_500_TEMPLATE = (
     "Connection: close\r\n"
     "\r\n"
 )
+
+
+def _build_tls_context() -> Optional[ssl.SSLContext]:
+    """
+    Configura un contexto TLS si PORTAL_ENABLE_TLS está activo.
+    Retorna None si TLS está deshabilitado.
+    """
+    if not TLS_ENABLED:
+        return None
+
+    if not TLS_CERT_FILE or not TLS_KEY_FILE:
+        logging.error(
+            "PORTAL_ENABLE_TLS=1 pero faltan PORTAL_TLS_CERT/PORTAL_TLS_KEY (cert=%s, key=%s)",
+            TLS_CERT_FILE,
+            TLS_KEY_FILE,
+        )
+        raise SystemExit(1)
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    try:
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+    except AttributeError:
+        # En versiones antiguas de Python/SSL no existe TLSVersion
+        pass
+    if hasattr(ssl, "OP_NO_COMPRESSION"):
+        context.options |= ssl.OP_NO_COMPRESSION
+    if TLS_CIPHERS:
+        try:
+            context.set_ciphers(TLS_CIPHERS)
+        except ssl.SSLError as exc:
+            logging.error("Lista de cifrados inválida en PORTAL_TLS_CIPHERS: %s", exc)
+            raise SystemExit(1) from exc
+
+    try:
+        context.load_cert_chain(certfile=TLS_CERT_FILE, keyfile=TLS_KEY_FILE)
+    except Exception as exc:
+        logging.error("No se pudo cargar el certificado/llave TLS: %s", exc)
+        raise SystemExit(1) from exc
+
+    return context
 
 
 def load_template(path: Path, fallback_message: str = "Plantilla no encontrada") -> bytes:
@@ -256,11 +313,16 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
 
             # Parsear body del POST robustamente
             form = read_post_body_and_parse(data, conn)
-            if form is None:
-                body = b"<html><body><h1>400 Bad Request</h1></body></html>"
+            if form == {}:
+                body = (
+                    b"<!DOCTYPE html><html><body>"
+                    b"<h1>400 Bad Request</h1><p>POST mal formado.</p>"
+                    b"</body></html>"
+                )
                 header = HTTP_400_TEMPLATE.format(length=len(body)).encode("ascii")
                 conn.sendall(header + body)
                 return
+
 
             username = form.get("username", "").strip()
             password = form.get("password", "")
@@ -279,15 +341,43 @@ def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
             try:
                 if authenticate(username, password, USERS):
                     logging.info("Login exitoso para '%s' desde %s", username, addr[0])
+
+                    # Intentar obtener MAC desde el gateway (arp)
+                    client_ip = addr[0]
+                    try:
+                        mac = arp_lookup.get_mac(client_ip)
+                        if mac:
+                            logging.info("MAC encontrada para %s : %s", client_ip, mac)
+                        else:
+                            logging.info("No se encontró MAC para %s; continuará solo con IP", client_ip)
+                    except Exception as exc:
+                        logging.warning("Error obteniendo MAC para %s: %s", client_ip, exc)
+                        mac = None
+
+                    # Crear sesión guardando IP y (si se obtuvo) MAC
+                    try:
+                        # usar sessions.crear_sesion (importarlo arriba)
+                        crear_sesion(username, client_ip, mac=mac)
+                    except Exception as exc:
+                        logging.exception("Error creando sesión para %s: %s", username, exc)
+
                     body = TEMPLATE_CACHE.get("/success") or "<h1>Autenticación exitosa</h1>".encode("utf-8")
+
+                    header = HTTP_OK_TEMPLATE.format(length=len(body))
+                    conn.sendall(header.encode("ascii") + body)
+                    return
+
                 else:
-                    logging.info("Login fallido para '%s' desde %s", username, addr[0])
-                    body = TEMPLATE_CACHE.get("/error") or "<h1>Acceso denegado</h1>".encode("utf-8")
-
-                header = HTTP_OK_TEMPLATE.format(length=len(body))
-                conn.sendall(header.encode("ascii") + body)
-                return
-
+                    # --- LOGGING DE LOGIN FALLIDO AÑADIDO ---
+                    logging.warning(
+                        "Login FALLIDO para '%s' desde %s", username, addr[0]
+                    )
+                    # --------------------------------------
+                    body = TEMPLATE_CACHE.get("/error") or (
+                        b"<!DOCTYPE html><html><body><h1>Acceso denegado</h1></body></html>"
+                    )
+                    header = HTTP_OK_TEMPLATE.format(length=len(body))
+                    conn.sendall(header.encode("ascii") + body)
             except Exception as exc:
                 logging.exception("Error validando credenciales: %s", exc)
                 body = (
@@ -368,13 +458,23 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
 
     stop_event = threading.Event()
 
+    tls_context = _build_tls_context()
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_sock.bind((host, port))
         server_sock.listen(64)  # backlog decente para picos breves
         server_sock.settimeout(1.0)  # para permitir cerrar con Ctrl+C
 
-        logging.info("Servidor HTTP (socket) escuchando en %s:%d", host, port)
+        if tls_context:
+            logging.info(
+                "Servidor HTTPS escuchando en %s:%d (cert=%s)",
+                host,
+                port,
+                TLS_CERT_FILE,
+            )
+        else:
+            logging.info("Servidor HTTP escuchando en %s:%d", host, port)
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             try:
@@ -385,6 +485,15 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
                         continue
                     except OSError:
                         break  # socket cerrado
+                    if tls_context:
+                        try:
+                            conn = tls_context.wrap_socket(conn, server_side=True)
+                        except ssl.SSLError as exc:
+                            logging.warning(
+                                "Fallo handshake TLS con %s: %s", addr[0], exc
+                            )
+                            conn.close()
+                            continue
 
                     executor.submit(handle_client, conn, addr)
             except KeyboardInterrupt:
@@ -396,11 +505,22 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
 
 
 if __name__ == "__main__":
-    log_level = os.getenv("PORTAL_LOG_LEVEL", "INFO").upper()
-    level = getattr(logging, log_level, logging.INFO)
+    # --- Configuración del Logging a Archivo ---
+    LOGS_DIR.mkdir(exist_ok=True)
+    
+    # 1. Crear el formato deseado
+    log_format = "%(asctime)s [%(levelname)s] %(message)s"
+
+    # 2. Configurar el logging para enviar a archivo y consola
     logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        force=True,
+        level=logging.INFO,
+        format=log_format,
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding="utf-8"), # Escribe al archivo
+            logging.StreamHandler(), # Escribe a la consola (sys.stderr)
+        ]
     )
+    logging.info("Sistema de logging configurado. Guardando en: %s", LOG_FILE)
+    # ------------------------------------------
+
     run_server()
