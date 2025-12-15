@@ -1,67 +1,80 @@
-# Pruebas básicas – Issue #12
+# Pruebas funcionales básicas (Issue #12)
 
-Este documento resume las **pruebas funcionales** ejecutadas tras integrar las issues #1–#11 y #13–#16.  
-Todas las pruebas se hicieron en el laboratorio descrito en `docs/topologia.md`:
+Objetivo: validar que el portal cautivo funciona con **2+ clientes simultáneos** siguiendo la topología de laboratorio y los requisitos previos (issues 1‑11).
 
-- **Gateway/Portal** (`gateway-redes`):
-  - Interfaz LAN `enp0s8` → `192.168.50.1/24`
-  - Interfaz WAN `enp0s3` → NAT de VirtualBox (DHCP)
-  - Portal en ejecución: `sudo -E PORTAL_HTTP_PORT=8080 PORTAL_LAN_IF=enp0s8 python3 src/http_server.py`
-  - Firewall aplicado con `sudo bash scripts/firewall_init.sh`.
-- **Cliente A** (`cliente1`): `192.168.50.10/24`, gateway `192.168.50.1`.
-- **Cliente B** (`cliente2`): `192.168.50.11/24`, gateway `192.168.50.1`.
-- Archivo de usuarios (`config/usuarios.txt`) con credenciales `admin:admin`, `invitado:invitado123`.
+## Preparación
 
-> Todos los comandos se ejecutan como `root` o usando `sudo`, ya que el portal necesita modificar iptables cuando las sesiones cambian.
+- Topología según `docs/topologia.md` (gateway `192.168.50.1/24`, clientes `192.168.50.x/24`).
+- Firewall base aplicado: `sudo bash scripts/firewall_init.sh` (incluye redirección HTTP y NAT).
+- Servidor del portal activo: `sudo PORTAL_HTTP_PORT=8080 python3 src/http_server.py`.
+- Dos clientes configurados (ejemplo): `cliente1=192.168.50.10`, `cliente2=192.168.50.11`, con DNS accesible (ej. `8.8.8.8`).
+- Credenciales de prueba en `config/usuarios.txt` (por defecto `admin:admin`).
 
----
+## Escenarios de prueba
 
-## Escenario 1 – Redirección automática y portal visible
+1) **Redirección HTTP sin login (cliente1 y cliente2)**
+   - Paso: desde cada cliente `curl -i http://example.com` (o abre cualquier sitio HTTP).
+   - Esperado: aparece la página del portal (login), no se resuelve el sitio real; en el gateway no hay reglas FORWARD/RETURN específicas para esas IPs.
 
-1. En el gateway ejecutar `sudo bash scripts/firewall_init.sh`.
-2. Desde Cliente A (sin sesión) ejecutar `curl -i http://example.com`.
-3. Resultado esperado/observado:
-   - Respuesta `HTTP/1.1 200 OK` con el HTML de `src/templates/login.html`.
-   - `sudo iptables -t nat -L PREROUTING -n --line-numbers | head -n 3` muestra la regla `REDIRECT --to-ports 8080` insertada por el script (issue #13).
+2) **Login exitoso + navegación (cliente1)**
+   - Paso: POST `/login` con credenciales válidas (`admin:admin`), luego repetir `curl http://example.com`.
+   - Esperado: el POST devuelve página de éxito; en el gateway aparecen reglas `ACCEPT` en FORWARD y `RETURN` en `nat PREROUTING` para `cliente1`; el segundo `curl` ya llega al destino real (no vuelve el portal).
 
-## Escenario 2 – Login correcto con dos clientes simultáneos
+3) **Concurrencia: login cliente2 mientras cliente1 ya navega**
+   - Paso: con cliente1 autenticado, repetir el escenario 2 en cliente2.
+   - Esperado: ambos pueden navegar; en iptables hay dos entradas (cliente1 y cliente2); el portal responde a múltiples peticiones simultáneas sin bloquearse.
 
-1. Clientes A y B abren `http://portal` (redirigidos vía PREROUTING).
-2. Cada cliente envía `POST /login` con credenciales válidas (`admin` y `invitado`).
-3. Resultado esperado/observado:
-   - Plantilla `login_success.html` en ambos clientes.
-   - En el gateway:
-     ```bash
-     sudo iptables -L FORWARD -n --line-numbers | head -n 5
-     # → Entradas ACCEPT para 192.168.50.10 y 192.168.50.11 en primera posición.
-     sudo iptables -t nat -L PREROUTING -n --line-numbers | head -n 5
-     # → Entradas RETURN para las mismas IPs (bypass del portal).
-     ```
-   - `config/sessions.json` contiene dos sesiones con usuario/IP (y MAC si estaba en la tabla ARP).
-   - Ambos clientes pueden navegar (`curl https://www.example.org` responde correctamente).
+4) **Login fallido (cliente2)**
+   - Paso: enviar credenciales incorrectas.
+   - Esperado: página de error; no se crean reglas FORWARD/RETURN nuevas para esa IP.
 
-## Escenario 3 – Login inválido
+5) *(Opcional)* **Expiración de sesión**
+   - Paso: ajustar `PORTAL_SESSION_TTL` a un valor pequeño, autenticarse y esperar la expiración.
+   - Esperado: tras TTL, desaparecen las reglas dinámicas para la IP y vuelve a mostrarse el portal.
 
-1. Cliente A envía `POST /login` con contraseña incorrecta.
-2. Resultado esperado/observado:
-   - Plantilla `login_error.html`.
-   - No se modifica `iptables` (verificado con `sudo iptables -L FORWARD -n | grep 192.168.50.10` → sin coincidencias nuevas).
-   - En logs (`journalctl -u portal` o salida estándar) aparece `Login fallido` y no se crean entradas en `config/sessions.json`.
+## Scripts de apoyo
 
-## Escenario 4 – Expiración/limpieza de sesiones
+- `tests/pruebas_basicas.sh`: ejecutarlo en cada cliente para automatizar los escenarios 1 y 2.
 
-1. Lanzar el portal con `PORTAL_SESSION_TTL=30` (30 s).
-2. Cliente A inicia sesión correctamente.
-3. Tras 35 s ejecutar `python3 -c "import sessions; sessions.limpiar_sesiones_expiradas()"` en el gateway.
-4. Resultado esperado/observado:
-   - El comando devuelve `1` sesión eliminada y loguea la eliminación.
-   - `sudo iptables -L FORWARD -n --line-numbers | grep 192.168.50.10` ya no muestra la regla ACCEPT (se eliminó).
-   - El cliente vuelve a ser redirigido al portal hasta volver a autenticarse.
+  ```bash
+  PORTAL_HOST=192.168.50.1 PORTAL_PORT=8080 \
+  TARGET_URL=http://example.com \
+  PORTAL_USER=admin PORTAL_PASS=admin \
+  bash tests/pruebas_basicas.sh
+  ```
 
----
+  - Salida esperada: detecta portal antes del login, login exitoso y acceso posterior sin portal. Devuelve código distinto de 0 si el login falla o si después del login se sigue viendo el portal.
+  - Para cubrir concurrencia, lanza el script casi al mismo tiempo en cliente1 y cliente2.
 
-## Resumen
+### Pruebas con contenedores Docker en el cliente (concurrencia en una sola VM)
 
-- Las funcionalidades principales (redirigir HTTP, autenticar, crear sesiones, permitir navegación y limpiar reglas) funcionan con múltiples clientes concurrentes.
-- Los resultados anteriores sirven como **punto de partida** para automatizar pruebas (bash/python) en `tests/`.
-- Si aparece algún comportamiento inesperado durante estas pruebas, se debe crear un nuevo issue y documentarlo en esta misma sección.
+Si solo tienes una VM cliente, puedes simular varios clientes con contenedores usando macvlan (cada contenedor recibe una IP de la LAN):
+
+1. En la VM cliente, ejecuta:
+
+   ```bash
+   LAN_IF=enp0s3 CLIENT_IPS="192.168.50.101 192.168.50.102" \
+   PORTAL_HOST=192.168.50.1 PORTAL_PORT=8080 \
+   bash tests/pruebas_contenedores.sh
+   ```
+
+   - `LAN_IF` es la interfaz de la VM cliente hacia el gateway.
+   - Ajusta `CLIENT_IPS` con tantas IPs libres como contenedores quieras lanzar.
+2. El script crea una red macvlan y corre una versión ligera de `pruebas_basicas` dentro de cada contenedor usando `alpine:3` (solo requiere `wget`, ya incluido).
+3. Verifica en el gateway que aparezcan reglas `RETURN`/`ACCEPT` para todas las IPs usadas.
+
+## Registro de resultados (rellenar tras ejecución)
+
+| Escenario | Cliente(s) | Observado | Fecha |
+| --------- | ---------- | --------- | ----- |
+| Redirección sin login | cliente1, cliente2 | _pendiente de ejecutar en laboratorio_ | |
+| Login + navegación | cliente1 | _pendiente de ejecutar en laboratorio_ | |
+| Concurrencia (dos clientes) | cliente1 + cliente2 | _pendiente de ejecutar en laboratorio_ | |
+| Login fallido | cliente2 | _pendiente de ejecutar en laboratorio_ | |
+| Expiración (opcional) | cliente1 | _pendiente de ejecutar en laboratorio_ | |
+
+## Checklist rápido en el gateway
+
+- `sudo iptables -t nat -L PREROUTING -n --line-numbers` muestra la regla REDIRECT global y, tras login, reglas `RETURN` para cada IP autenticada.
+- `sudo iptables -L FORWARD -n --line-numbers` muestra reglas `ACCEPT` para las IPs autenticadas.
+- `sudo tail -f /var/log/syslog` (o el log de tu elección) mientras ejecutas las pruebas para ver eventos del servidor y del firewall.

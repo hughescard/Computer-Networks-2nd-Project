@@ -75,7 +75,7 @@ iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
 
 ## Reglas dinámicas por cliente (login)
 
-Cuando un cliente se autentica exitosamente, el portal crea una sesión y añade una regla dinámica en la cadena FORWARD para permitir el enrutamiento desde la IP del cliente hacia Internet.
+Cuando un cliente se autentica exitosamente, el portal crea una sesión y añade reglas dinámicas para permitir el enrutamiento desde la IP del cliente hacia Internet y saltar la redirección HTTP.
 
 Ejemplo de reglas añadidas (orden de inserción):
 
