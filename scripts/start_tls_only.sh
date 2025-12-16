@@ -16,8 +16,19 @@ if [[ -z "${PORTAL_TLS_CERT:-}" || -z "${PORTAL_TLS_KEY:-}" ]]; then
   exit 1
 fi
 
-echo "[1/2] Usando LAN $PORTAL_LAN_IF, puerto TLS $PORTAL_HTTP_PORT..."
-echo "[2/2] Arrancando solo el servidor HTTPS..."
+echo "[1/3] Abriendo puerto ${PORTAL_HTTP_PORT} en el firewall..."
+sudo iptables -I INPUT -p tcp --dport "$PORTAL_HTTP_PORT" -j ACCEPT
+RULE_INSTALLED=1
+
+cleanup() {
+  if [[ "${RULE_INSTALLED:-0}" -eq 1 ]]; then
+    sudo iptables -D INPUT -p tcp --dport "$PORTAL_HTTP_PORT" -j ACCEPT || true
+  fi
+}
+trap cleanup EXIT
+
+echo "[2/3] Usando LAN $PORTAL_LAN_IF, puerto TLS $PORTAL_HTTP_PORT..."
+echo "[3/3] Arrancando solo el servidor HTTPS..."
 
 exec sudo -E \
   PORTAL_LAN_IF="$PORTAL_LAN_IF" \
