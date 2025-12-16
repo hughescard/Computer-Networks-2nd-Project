@@ -308,6 +308,35 @@ def eliminar_sesion(ip: str, mac: Optional[str] = None) -> bool:
         return existed
 
 
+def eliminar_sesiones_por_ip(ip: str) -> int:
+    """
+    Elimina todas las sesiones cuyo campo IP coincide, independientemente de la MAC.
+
+    Útil como fallback si no se puede resolver la MAC en el logout.
+    Devuelve cuántas sesiones fueron eliminadas.
+    """
+    removed_sessions = []
+    with _lock:
+        for key, sess in list(_sessions.items()):
+            if sess.ip == ip:
+                removed_sessions.append((key, sess))
+                _sessions.pop(key, None)
+        if removed_sessions:
+            _save_to_disk()
+
+    for key, sess in removed_sessions:
+        if sess.mac:
+            firewall_dynamic.denegar_ip_mac(sess.ip, sess.mac)
+            logging.info("Regla de firewall eliminada para %s (MAC %s)", sess.ip, sess.mac)
+        else:
+            firewall_dynamic.denegar_ip(sess.ip)
+            logging.info("Regla de firewall eliminada para %s", sess.ip)
+
+    if removed_sessions:
+        logging.info("Sesiones eliminadas por IP %s: %d", ip, len(removed_sessions))
+    return len(removed_sessions)
+
+
 def limpiar_sesiones_expiradas() -> int:
     """
     Elimina todas las sesiones expiradas y devuelve cuántas se eliminaron.
