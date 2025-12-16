@@ -114,6 +114,7 @@ La estructura básica de directorios es:
 - `docs/pruebas_basicas.md`: escenarios ejecutados con múltiples clientes (issue #12).
 - `docs/antisuplantacion.md`: enfoque IP+MAC para reducir la suplantación (issue #16).
 - `docs/https.md`: generación de certificados y activación de HTTPS con la stdlib (issue #15).
+- `docs/checklist_requisitos.md`: checklist final de requisitos y guía de pruebas integrales (issue #20).
 
 ## Notas adicionales
 
