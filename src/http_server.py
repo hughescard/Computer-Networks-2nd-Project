@@ -25,7 +25,7 @@ from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
 
 
-from sessions import crear_sesion, eliminar_sesion  # o import sessions
+from sessions import crear_sesion, eliminar_sesion, eliminar_sesiones_por_ip  # o import sessions
 import arp_lookup
 
 
@@ -278,6 +278,11 @@ def _logout_client(client_ip: str) -> bool:
             removed = eliminar_sesion(client_ip, None)
     else:
         removed = eliminar_sesion(client_ip, None)
+
+    if not removed:
+        # Fallback: elimina cualquier sesión con esa IP aunque no se conozca la MAC
+        removed_count = eliminar_sesiones_por_ip(client_ip)
+        removed = removed_count > 0
 
     if removed:
         logging.info("Sesión cerrada para %s", client_ip)
