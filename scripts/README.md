@@ -15,6 +15,8 @@ Ejemplos de scripts que se irán añadiendo:
 - Scripts relacionados con el entorno de desarrollo:
   - Instalación de dependencias.
   - Puesta en marcha del entorno de pruebas.
+- Scripts de mantenimiento:
+  - `reset_sessions.sh`: elimina todas las sesiones persistidas (`config/sessions.json`).
 
 ## Convenciones
 
