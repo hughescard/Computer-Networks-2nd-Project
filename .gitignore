@@ -26,6 +26,9 @@ logs/
 # Estado de ejecución
 config/sessions.json
 
+# Material TLS (no subir claves/certificados locales)
+config/tls/
+
 # Archivos temporales
 *.tmp
 *.bak
