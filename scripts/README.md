@@ -17,6 +17,10 @@ Ejemplos de scripts que se irán añadiendo:
   - Puesta en marcha del entorno de pruebas.
 - Scripts de mantenimiento:
   - `reset_sessions.sh`: elimina todas las sesiones persistidas (`config/sessions.json`).
+- Scripts auxiliares de arranque:
+  - `start_gateway.sh`: prepara firewall + portal HTTP.
+  - `start_gateway_https.sh`: same pero con TLS y reconfigura firewall.
+  - `start_tls_only.sh`: arranca solo el servidor HTTPS sin volver a tocar iptables (útil para tener ambas instancias simultáneas).
 
 ## Convenciones
 
