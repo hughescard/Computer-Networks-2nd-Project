@@ -34,7 +34,7 @@ Secuencia recomendada para validar los puntos criticos del sistema (requiere gat
 6. **HTTPS:** iniciar el portal con TLS (cert/llave en `config/tls`), abrir `https://<gateway>:8443/login` con `curl -k` o navegador y repetir el login. Si usas un puerto TLS distinto, exporta `PORTAL_HTTPS_PORT` antes de `firewall_init.sh`.
 7. **Anti-suplantacion IP+MAC:** asegurate de que el gateway tenga entrada ARP para la IP del cliente (`ip neigh show <IP>`). Tras el login, revisa que las reglas de `iptables` incluyan `--mac-source <MAC>`; si la MAC cambia, la sesion debe ser rechazada y no se debe crear nueva regla hasta relogin.
 8. **Concurrencia:** ejecuta `tests/pruebas_basicas.sh` en dos clientes (o `tests/pruebas_contenedores.sh` en uno solo) casi al mismo tiempo y valida que ambos navegantes mantengan sus reglas activas.
-9. **Logs y limpieza:** monitorea `logs/portal_captivo.log` durante las pruebas y ejecuta `scripts/reset_sessions.sh` o logout (`/logout`) para eliminar reglas y sesiones al cierre.
+9. **Logs y limpieza:** monitorea `logs/portal_captivo.log` durante las pruebas y ejecuta `sudo ./scripts/reset_sessions.sh` (o logout `/logout`) para eliminar reglas y sesiones al cierre.
 
 ## Registro rapido de ejecucion
 

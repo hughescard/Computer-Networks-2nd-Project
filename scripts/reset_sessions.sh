@@ -4,6 +4,11 @@
 
 set -euo pipefail
 
+if [ "$EUID" -ne 0 ]; then
+  echo "Reejecutando como root para poder eliminar reglas de iptables y sesiones..." >&2
+  exec sudo -E "$0" "$@"
+fi
+
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && cd .. && pwd)"
 cd "$REPO_ROOT"
 
@@ -18,7 +23,7 @@ from sessions import eliminar_sesion, obtener_todas_las_sesiones
 sessions = obtener_todas_las_sesiones()
 
 if not sessions:
-    print("No hay sesiones guardadas.")
+    print("No hay sesiones guardadas. Nada que eliminar.")
     raise SystemExit(0)
 
 for (ip, mac) in list(sessions.keys()):

@@ -16,7 +16,7 @@ Ejemplos de scripts que se irán añadiendo:
   - Instalación de dependencias.
   - Puesta en marcha del entorno de pruebas.
 - Scripts de mantenimiento:
-  - `reset_sessions.sh`: elimina todas las sesiones persistidas (`config/sessions.json`).
+  - `reset_sessions.sh`: elimina todas las sesiones persistidas (`config/sessions.json`). **Ejecutar como root** para que pueda borrar también las reglas de iptables asociadas.
 - Scripts auxiliares de arranque:
   - `start_gateway.sh`: prepara firewall + portal HTTP.
   - `start_gateway_https.sh`: same pero con TLS y reconfigura firewall.
