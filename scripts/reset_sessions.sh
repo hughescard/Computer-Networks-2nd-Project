@@ -8,6 +8,12 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && cd .. && pwd)"
 cd "$REPO_ROOT"
 
 python3 <<'PY'
+import sys
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(repo_root / "src"))
+
 from sessions import eliminar_sesion, obtener_todas_las_sesiones
 
 sessions = obtener_todas_las_sesiones()
