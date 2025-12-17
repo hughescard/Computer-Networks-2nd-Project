@@ -315,6 +315,9 @@ def eliminar_sesiones_por_ip(ip: str) -> int:
     Útil como fallback si no se puede resolver la MAC en el logout.
     Devuelve cuántas sesiones fueron eliminadas.
     """
+    # Refrescar desde disco por si otra instancia del portal creó la sesión
+    _load_from_disk()
+
     removed_sessions = []
     with _lock:
         for key, sess in list(_sessions.items()):
