@@ -40,6 +40,21 @@ def _run(cmd: list[str]) -> bool:
         return False
 
 
+def _delete(cmd: list[str], label: str) -> bool:
+    """
+    Intenta eliminar una regla. No considera error que la regla no exista.
+    Devuelve True si se eliminó alguna.
+    """
+    if not _ensure_binary():
+        return False
+    result = subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result.returncode == 0:
+        logging.info("[FIREWALL] Eliminada regla %s: %s", label, " ".join(cmd))
+        return True
+    logging.debug("[FIREWALL] Regla %s no estaba presente (cmd: %s)", label, " ".join(cmd))
+    return False
+
+
 def _rule_exists(check_cmd: list[str]) -> bool:
     """
     Devuelve True si la regla ya existe (usa iptables -C).
@@ -156,33 +171,31 @@ def denegar_ip_mac(ip: str, mac: str | None) -> bool:
         CAPTIVE_HTTP_PORT,
     ]
 
+    # Construir variantes con y sin MAC para asegurar limpieza completa
+    commands: list[tuple[list[str], str]] = []
+
+    forward_no_mac = remove_forward + ["-j", "ACCEPT"]
+    bypass_no_mac = remove_bypass + ["-j", "RETURN"]
+    commands.append((forward_no_mac, "FORWARD/ip"))
+    commands.append((bypass_no_mac, "PREROUTING/ip"))
+
     if mac:
-        remove_forward += ["-m", "mac", "--mac-source", mac, "-j", "ACCEPT"]
-        remove_bypass += ["-m", "mac", "--mac-source", mac, "-j", "RETURN"]
-    else:
-        # agregar objetivos para que el -D tenga el mismo formato que -A/ -I creó
-        remove_forward += ["-j", "ACCEPT"]
-        remove_bypass += ["-j", "RETURN"]
-
-    # Elimina todas las ocurrencias de la regla (puede haber duplicados si hubo varias instancias)
-    ok_forward = True
-    ok_bypass = True
+        forward_mac = remove_forward + ["-m", "mac", "--mac-source", mac, "-j", "ACCEPT"]
+        bypass_mac = remove_bypass + ["-m", "mac", "--mac-source", mac, "-j", "RETURN"]
+        commands.append((forward_mac, "FORWARD/ip+mac"))
+        commands.append((bypass_mac, "PREROUTING/ip+mac"))
 
     removed_any = False
-    while _run(remove_forward):
-        removed_any = True
-    if not removed_any:
-        logging.info("[FIREWALL] No se encontró regla FORWARD para %s (mac=%s)", ip, mac)
-
-    removed_any = False
-    while _run(remove_bypass):
-        removed_any = True
-    if not removed_any:
-        logging.info("[FIREWALL] No se encontró regla PREROUTING para %s (mac=%s)", ip, mac)
+    for cmd, label in commands:
+        while _delete(cmd, label):
+            removed_any = True
 
     _flush_conntrack(ip)
 
-    return ok_forward and ok_bypass
+    if not removed_any:
+        logging.info("[FIREWALL] No se encontraron reglas a eliminar para %s (mac=%s)", ip, mac)
+
+    return True
 
 
 
