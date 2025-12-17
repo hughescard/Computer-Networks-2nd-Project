@@ -62,15 +62,15 @@ for ip in $CLIENT_IPS; do
     "$IMAGE" sh -c "
       set -e
       check_portal() {
-        wget -qO- \"$TARGET_URL\" | grep -qi 'Portal Cautivo\\|Iniciar sesi' && return 0
+        wget -q -O - \"$TARGET_URL\" | grep -qi 'Portal Cautivo\\|Iniciar sesi' && return 0
         return 1
       }
       echo \"[conteiner-$ip] Paso 1: comprobar portal sin login...\"
       check_portal || { echo 'ERROR: no se detectó portal antes de login'; exit 1; }
       echo \"[conteiner-$ip] Paso 2: login...\"
-      wget -qO- --post-data \"username=${PORTAL_USER}&password=${PORTAL_PASS}\" \"http://${PORTAL_HOST}:${PORTAL_PORT}/login\" | grep -qi 'Autenticaci' || { echo 'ERROR: login falló'; exit 1; }
+      wget -q -O - --post-data \"username=${PORTAL_USER}&password=${PORTAL_PASS}\" \"http://${PORTAL_HOST}:${PORTAL_PORT}/login\" | grep -qi 'Autenticaci' || { echo 'ERROR: login falló'; exit 1; }
       echo \"[conteiner-$ip] Paso 3: comprobar acceso tras login...\"
-      if wget -qO- \"$TARGET_URL\" | grep -qi 'Portal Cautivo\\|Iniciar sesi'; then
+      if wget -q -O - \"$TARGET_URL\" | grep -qi 'Portal Cautivo\\|Iniciar sesi'; then
         echo 'ERROR: aún aparece el portal después de login'; exit 1;
       fi
       echo \"[conteiner-$ip] OK\"

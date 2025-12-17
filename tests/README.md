@@ -38,3 +38,19 @@ Aunque parte de la documentación de pruebas quede en `docs/` (por ejemplo `docs
   ```
 
   Requiere Docker y permisos para crear redes macvlan en el cliente.
+
+- `prueba_r12_antisuplantacion.sh`: prueba automatizada del requisito R12 (anti-suplantación IP+MAC) usando Docker/macvlan desde la VM cliente.
+
+  ```bash
+  LAN_IF=enp0s3 CLIENT_IP=192.168.50.101 \
+  PORTAL_HOST=192.168.50.1 PORTAL_PORT=8080 \
+  bash tests/prueba_r12_antisuplantacion.sh
+  ```
+
+  Si falla en `[1/3]` y no se ve el motivo, ejecutar con `DEBUG=1` para dejar contenedores y ver mensajes de error:
+
+  ```bash
+  DEBUG=1 LAN_IF=enp0s3 CLIENT_IP=192.168.50.101 \
+  PORTAL_HOST=192.168.50.1 PORTAL_PORT=8080 \
+  bash tests/prueba_r12_antisuplantacion.sh
+  ```

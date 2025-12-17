@@ -11,6 +11,7 @@
 #   TARGET_URL    (sitio HTTP a abrir para comprobar redirección, por defecto http://example.com)
 #   PORTAL_USER   (usuario válido para login, por defecto admin)
 #   PORTAL_PASS   (contraseña válida, por defecto admin)
+#   SOURCE_IP    (opcional) IP origen a usar en curl (--interface), útil para simular varios clientes desde una sola VM.
 
 set -euo pipefail
 
@@ -19,6 +20,12 @@ PORTAL_PORT="${PORTAL_PORT:-8080}"
 TARGET_URL="${TARGET_URL:-http://example.com}"
 PORTAL_USER="${PORTAL_USER:-admin}"
 PORTAL_PASS="${PORTAL_PASS:-admin}"
+SOURCE_IP="${SOURCE_IP:-}"
+
+CURL_OPTS=()
+if [[ -n "$SOURCE_IP" ]]; then
+  CURL_OPTS+=(--interface "$SOURCE_IP")
+fi
 
 TMP_HEADERS="$(mktemp)"
 TMP_BODY="$(mktemp)"
@@ -44,7 +51,7 @@ log "=== Prueba básica del portal cautivo ==="
 log "Gateway: $PORTAL_HOST:$PORTAL_PORT | TARGET_URL: $TARGET_URL"
 
 log "1) Acceso SIN login a $TARGET_URL (debería aparecer el portal)..."
-if curl -s -D "$TMP_HEADERS" -o "$TMP_BODY" --max-time 8 "$TARGET_URL"; then
+if curl "${CURL_OPTS[@]}" -s -D "$TMP_HEADERS" -o "$TMP_BODY" --max-time 8 "$TARGET_URL"; then
   if check_portal_in_body "$TMP_BODY"; then
     log "OK: se detectó el portal en la respuesta inicial."
   else
@@ -58,7 +65,7 @@ else
 fi
 
 log "2) Login con usuario válido ($PORTAL_USER)..."
-if curl -s -o "$TMP_LOGIN" --max-time 8 \
+if curl "${CURL_OPTS[@]}" -s -o "$TMP_LOGIN" --max-time 8 \
     -d "username=${PORTAL_USER}&password=${PORTAL_PASS}" \
     "http://${PORTAL_HOST}:${PORTAL_PORT}/login"; then
   if grep -qi "Autenticaci[oó]n exitosa" "$TMP_LOGIN"; then
@@ -74,7 +81,7 @@ else
 fi
 
 log "3) Acceso DESPUÉS del login a $TARGET_URL (no debería mostrarse el portal)..."
-if curl -s -D "$TMP_HEADERS" -o "$TMP_BODY" --max-time 8 "$TARGET_URL"; then
+if curl "${CURL_OPTS[@]}" -s -D "$TMP_HEADERS" -o "$TMP_BODY" --max-time 8 "$TARGET_URL"; then
   if check_portal_in_body "$TMP_BODY"; then
     log "ERROR: se sigue mostrando el portal después del login."
     log "Cuerpo guardado en: $TMP_BODY"
