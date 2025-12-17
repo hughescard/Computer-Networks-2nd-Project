@@ -25,8 +25,15 @@ from urllib.parse import parse_qs
 from auth import load_users, authenticate, UserLoadError, UsersDict
 
 
-from sessions import crear_sesion, eliminar_sesion, eliminar_sesiones_por_ip  # o import sessions
+from sessions import (
+    crear_sesion,
+    eliminar_sesion,
+    eliminar_sesiones_por_ip,
+    limpiar_sesiones_expiradas,
+)  # o import sessions
 import arp_lookup
+
+import firewall_dynamic
 
 
 
@@ -41,6 +48,7 @@ TLS_ENABLED = os.getenv("PORTAL_ENABLE_TLS", "0").strip().lower() in {"1", "true
 TLS_CERT_FILE = os.getenv("PORTAL_TLS_CERT")
 TLS_KEY_FILE = os.getenv("PORTAL_TLS_KEY")
 TLS_CIPHERS = os.getenv("PORTAL_TLS_CIPHERS")
+SESSION_CLEANUP_INTERVAL = int(os.getenv("PORTAL_SESSION_CLEANUP_INTERVAL", "30"))
 
 # Directorios de plantillas
 BASE_DIR = Path(__file__).resolve().parent
@@ -296,6 +304,23 @@ def _logout_client(client_ip: str) -> bool:
     return removed
 
 
+def _session_cleanup_worker(stop_event: threading.Event) -> None:
+    """
+    Elimina sesiones expiradas periódicamente para revocar acceso sin intervención del usuario.
+    """
+    # Intervalos <= 0 deshabilitan la limpieza automática.
+    if SESSION_CLEANUP_INTERVAL <= 0:
+        logging.info("Limpieza automática de sesiones deshabilitada (PORTAL_SESSION_CLEANUP_INTERVAL<=0).")
+        return
+
+    while not stop_event.is_set():
+        try:
+            limpiar_sesiones_expiradas()
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("Error en limpieza automática de sesiones: %s", exc)
+        stop_event.wait(SESSION_CLEANUP_INTERVAL)
+
+
 def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
     """
     Maneja una conexión TCP con un cliente.
@@ -523,6 +548,14 @@ def run_server(host: str = HOST, port: int = PORT) -> None:
     stop_event = threading.Event()
 
     tls_context = _build_tls_context()
+
+    # Hilo de mantenimiento: elimina sesiones expiradas y revoca reglas.
+    threading.Thread(
+        target=_session_cleanup_worker,
+        args=(stop_event,),
+        daemon=True,
+        name="session-cleanup",
+    ).start()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
