@@ -280,7 +280,7 @@ def _logout_client(client_ip: str) -> bool:
         removed = eliminar_sesion(client_ip, None)
 
     if not removed:
-        # Fallback: elimina cualquier sesión con esa IP aunque no se conozca la MAC
+        # Fallback: recarga sesiones desde disco y elimina cualquier sesión con esa IP.
         removed_count = eliminar_sesiones_por_ip(client_ip)
         removed = removed_count > 0
 
