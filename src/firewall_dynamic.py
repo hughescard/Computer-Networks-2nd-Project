@@ -12,6 +12,7 @@ import shutil
 import os
 
 IPTABLES = shutil.which("iptables") or "/sbin/iptables"
+CONNTRACK = shutil.which("conntrack") or "/usr/sbin/conntrack"
 
 # Parámetros para las reglas dinámicas (ajustables vía variables de entorno)
 LAN_INTERFACE = os.getenv("PORTAL_LAN_IF", "enp0s8")
@@ -37,6 +38,49 @@ def _run(cmd: list[str]) -> bool:
         logging.error("[FIREWALL] Error al ejecutar '%s': %s",
                       " ".join(cmd), exc)
         return False
+
+
+def _delete(cmd: list[str], label: str) -> bool:
+    """
+    Intenta eliminar una regla. No considera error que la regla no exista.
+    Devuelve True si se eliminó alguna.
+    """
+    if not _ensure_binary():
+        return False
+    result = subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result.returncode == 0:
+        logging.info("[FIREWALL] Eliminada regla %s: %s", label, " ".join(cmd))
+        return True
+    logging.debug("[FIREWALL] Regla %s no estaba presente (cmd: %s)", label, " ".join(cmd))
+    return False
+
+
+def _rule_exists(check_cmd: list[str]) -> bool:
+    """
+    Devuelve True si la regla ya existe (usa iptables -C).
+    check_cmd debe incluir la cadena de coincidencia completa sin el -C inicial.
+    """
+    if not _ensure_binary():
+        return False
+    cmd = [IPTABLES, "-C"] + check_cmd
+    result = subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return result.returncode == 0
+
+
+def _flush_conntrack(ip: str) -> None:
+    """
+    Elimina entradas de conntrack para la IP (evita que conexiones establecidas sigan vivas tras logout).
+    Si no existe el binario `conntrack`, solo loguea una advertencia.
+    """
+    if not CONNTRACK or not os.path.exists(CONNTRACK):
+        logging.warning("[FIREWALL] No se pudo limpiar conntrack (binario conntrack no encontrado)")
+        return
+    cmd = [CONNTRACK, "-D", "-s", ip]
+    try:
+        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logging.info("[FIREWALL] Limpiada tabla conntrack para origen %s", ip)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("[FIREWALL] Error limpiando conntrack para %s: %s", ip, exc)
 
 
 def permitir_ip(ip: str) -> bool:
@@ -79,8 +123,19 @@ def permitir_ip_mac(ip: str, mac: str | None) -> bool:
     allow_forward = base_forward + ["-j", "ACCEPT"]
     bypass_redirect = base_bypass + ["-j", "RETURN"]
 
-    ok_forward = _run(allow_forward)
-    ok_bypass = _run(bypass_redirect)
+    ok_forward = True
+    ok_bypass = True
+
+    if _rule_exists(allow_forward[1:]):  # quitar binario iptables
+        logging.info("[FIREWALL] Regla FORWARD ya existía para %s", ip)
+    else:
+        ok_forward = _run(allow_forward)
+
+    if _rule_exists(bypass_redirect[1:]):
+        logging.info("[FIREWALL] Regla PREROUTING ya existía para %s", ip)
+    else:
+        ok_bypass = _run(bypass_redirect)
+
     return ok_forward and ok_bypass
 
 
@@ -116,17 +171,31 @@ def denegar_ip_mac(ip: str, mac: str | None) -> bool:
         CAPTIVE_HTTP_PORT,
     ]
 
-    if mac:
-        remove_forward += ["-m", "mac", "--mac-source", mac, "-j", "ACCEPT"]
-        remove_bypass += ["-m", "mac", "--mac-source", mac, "-j", "RETURN"]
-    else:
-        # agregar objetivos para que el -D tenga el mismo formato que -A/ -I creó
-        remove_forward += ["-j", "ACCEPT"]
-        remove_bypass += ["-j", "RETURN"]
+    # Construir variantes con y sin MAC para asegurar limpieza completa
+    commands: list[tuple[list[str], str]] = []
 
-    ok_forward = _run(remove_forward)
-    ok_bypass = _run(remove_bypass)
-    return ok_forward and ok_bypass
+    forward_no_mac = remove_forward + ["-j", "ACCEPT"]
+    bypass_no_mac = remove_bypass + ["-j", "RETURN"]
+    commands.append((forward_no_mac, "FORWARD/ip"))
+    commands.append((bypass_no_mac, "PREROUTING/ip"))
+
+    if mac:
+        forward_mac = remove_forward + ["-m", "mac", "--mac-source", mac, "-j", "ACCEPT"]
+        bypass_mac = remove_bypass + ["-m", "mac", "--mac-source", mac, "-j", "RETURN"]
+        commands.append((forward_mac, "FORWARD/ip+mac"))
+        commands.append((bypass_mac, "PREROUTING/ip+mac"))
+
+    removed_any = False
+    for cmd, label in commands:
+        while _delete(cmd, label):
+            removed_any = True
+
+    _flush_conntrack(ip)
+
+    if not removed_any:
+        logging.info("[FIREWALL] No se encontraron reglas a eliminar para %s (mac=%s)", ip, mac)
+
+    return True
 
 
 
