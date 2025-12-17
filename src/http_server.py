@@ -284,6 +284,11 @@ def _logout_client(client_ip: str) -> bool:
         removed_count = eliminar_sesiones_por_ip(client_ip)
         removed = removed_count > 0
 
+    # Limpieza defensiva de reglas de firewall aunque no se encuentre la sesión
+    if mac:
+        firewall_dynamic.denegar_ip_mac(client_ip, mac)
+    firewall_dynamic.denegar_ip(client_ip)
+
     if removed:
         logging.info("Sesión cerrada para %s", client_ip)
     else:
